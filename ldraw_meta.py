@@ -414,9 +414,8 @@ def meta_pe_tex_path(ldraw_node, child_node):
     _params = clean_line.split()[2:]
 
     ldraw_node.current_pe_tex_path = int(_params[0])
-    if len(_params) == 4:
+    if len(_params) == 2:
         ldraw_node.current_subfile_pe_tex_path = int(_params[1])
-
 
 # PE_TEX_INFO bse64_str uses the file's uvs
 # PE_TEX_INFO x,y,z,a,b,c,d,e,f,g,h,i,bl/tl,tr/br is matrix and plane coordinates for uv calculations
@@ -508,7 +507,8 @@ def meta_pe_tex_info(ldraw_node, child_node, matrix):
         pe_tex_info.point_max = point_max.freeze()
         pe_tex_info.point_diff = point_diff.freeze()
         pe_tex_info.box_extents = box_extents.freeze()
-        pe_tex_info.matrix = (matrix @ _matrix).freeze()
+        # TODO: Move the init_matrix stuff back here
+        pe_tex_info.matrix = _matrix.freeze()
         pe_tex_info.matrix_inverse = _inverse_matrix.freeze()
 
         # this pe_tex_info applies to the subfile at current_pe_tex_path or
@@ -543,16 +543,17 @@ def meta_pe_tex_info(ldraw_node, child_node, matrix):
     pe_tex_info.image = image.name
 
     if ldraw_node.current_subfile_pe_tex_path is not None:
-        ldraw_node.subfile_pe_tex_infos.setdefault(ldraw_node.current_pe_tex_path, {})
-        ldraw_node.subfile_pe_tex_infos[ldraw_node.current_pe_tex_path].setdefault(ldraw_node.current_subfile_pe_tex_path, [])
-        ldraw_node.subfile_pe_tex_infos[ldraw_node.current_pe_tex_path][ldraw_node.current_subfile_pe_tex_path].append(pe_tex_info)
+        ldraw_node.subfile_pe_tex_infos \
+            .setdefault(ldraw_node.current_pe_tex_path, {}) \
+            .setdefault(ldraw_node.current_subfile_pe_tex_path, []) \
+            .append(pe_tex_info)
     else:
-        ldraw_node.pe_tex_infos.setdefault(ldraw_node.current_pe_tex_path, [])
-        ldraw_node.pe_tex_infos[ldraw_node.current_pe_tex_path].append(pe_tex_info)
+        ldraw_node.pe_tex_infos \
+            .setdefault(ldraw_node.current_pe_tex_path, []) \
+            .append(pe_tex_info)
 
     if ldraw_node.current_pe_tex_path == -1:
         ldraw_node.pe_tex_info = ldraw_node.pe_tex_infos[ldraw_node.current_pe_tex_path]
-
 
 def meta_edge(child_node, color_code, matrix, geometry_data):
     vertices = [matrix @ v for v in child_node.vertices]
@@ -565,7 +566,7 @@ def meta_edge(child_node, color_code, matrix, geometry_data):
 
 def meta_face(ldraw_node, child_node, color_code, matrix, geometry_data, winding):
     vertices = FaceData.handle_vertex_winding(child_node, matrix, winding)
-    pe_texmap = PETexmap.build_pe_texmap(ldraw_node, child_node, vertices)
+    pe_texmap = PETexmap.build_pe_texmap(ldraw_node, child_node)
 
     geometry_data.add_face_data(
         vertices=vertices,

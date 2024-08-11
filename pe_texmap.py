@@ -11,6 +11,26 @@ class PETexInfo:
         self.matrix_inverse = matrix_inverse
         self.image = image
 
+    def init_with_target_part_matrix(self, target_part_matrix):
+        self.matrix = self.matrix or mathutils.Matrix.Identity(4)
+        (translation, rotation, scale) = (target_part_matrix @ self.matrix).decompose()
+
+        self.box_extents = scale * 0.5
+
+        mirroring = mathutils.Vector((1, 1, 1))
+        if scale.x < 0:
+            mirroring.x = -1
+            self.box_extents.x = -self.box_extents.x
+        if scale.y < 0:
+            mirroring.y = -1
+            self.box_extents.y = -self.box_extents.y
+        if scale.z < 0:
+            mirroring.z = -1
+            self.box_extents.z = -self.box_extents.z
+
+        rhs = mathutils.Matrix.LocRotScale(translation, rotation, mirroring)
+        self.matrix = (target_part_matrix.inverted() @ rhs).freeze()
+        self.matrix_inverse = self.matrix.inverted().freeze()
 
 class PETexmap:
     def __init__(self):
@@ -18,6 +38,9 @@ class PETexmap:
         self.uvs = []
 
     def uv_unwrap_face(self, bm, face):
+        if not self.uvs:
+            return
+
         uv_layer = bm.loops.layers.uv.verify()
         uvs = {}
         for i, loop in enumerate(face.loops):
@@ -27,7 +50,7 @@ class PETexmap:
             loop[uv_layer].uv = uvs[p]
 
     @staticmethod
-    def build_pe_texmap(ldraw_node, child_node, vertices):
+    def build_pe_texmap(ldraw_node, child_node):
         # child_node is a 3 or 4 line
         _params = child_node.line.split()[2:]
 
@@ -37,12 +60,15 @@ class PETexmap:
             point_max = p.point_max or mathutils.Vector((1, 1))
             point_diff = p.point_diff or point_max - point_min
 
-            # if we have uv data and a pe_tex_info, otherwise pass
+            pe_texmap = PETexmap()
+            pe_texmap.texture = p.image
+
+            p.init_with_target_part_matrix(ldraw_node.matrix)
+
+            vertices = [p.matrix_inverse @ v for v in child_node.vertices]
+
             # # custom minifig head > 3626tex.dat (has no pe_tex) > 3626texpole.dat (has no uv data)
             if len(_params) == 15:  # use uvs provided in file
-                pe_texmap = PETexmap()
-                pe_texmap.texture = p.image
-
                 uv_params = _params[len(vertices) * 3:]
                 for i in range(len(vertices)):
                     x = round(float(uv_params[i * 2]), 3)
@@ -52,27 +78,23 @@ class PETexmap:
 
             else:
                 # calculate uvs
-                pe_texmap = PETexmap()
-                pe_texmap.texture = p.image
 
-                face_normal = (vertices[1] - vertices[0]).cross(vertices[2] - vertices[1])
-                face_normal.normalize()
+                ab = vertices[1] - vertices[0]
+                bc = vertices[2] - vertices[1]
+                face_normal = ab.cross(bc).normalized()
 
                 texture_normal = mathutils.Vector((0.0, -1, 0.0))
-                normal_dot = face_normal.dot(texture_normal)
-                face_normal_within_texture_normal = abs(normal_dot) >= 1.0 / 1000.0
+                if abs(face_normal.dot(texture_normal)) < 0.001:
+                    continue
 
                 for vert in vertices:
                     # if face is within p.boundingbox
                     # is_intersecting = (p.matrix @ p.bounding_box).interects(vert)
 
-                    # TODO: only add uvs for faces that actually have the texture
                     uv = mathutils.Vector((0, 0))
-                    if face_normal_within_texture_normal:  # and is_intersecting:
-                        uv.x = (vert.x - point_min.x) / point_diff.x
-                        uv.y = (vert.z - point_min.y) / point_diff.y
-                        if normal_dot > 0:
-                            uv.y = 1 - uv.y
+                    uv.x = (vert.x - point_min.x) / point_diff.x
+                    uv.y = (vert.z - point_min.y) / point_diff.y
+
                     pe_texmap.uvs.append(uv)
 
         return pe_texmap
