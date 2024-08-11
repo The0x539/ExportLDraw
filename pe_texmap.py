@@ -27,55 +27,52 @@ class PETexmap:
             loop[uv_layer].uv = uvs[p]
 
     @staticmethod
-    def build_pe_texmap(ldraw_node, child_node):
+    def build_pe_texmap(ldraw_node, child_node, vertices):
         # child_node is a 3 or 4 line
-        clean_line = child_node.line
-        _params = clean_line.split()[2:]
-
-        vert_count = len(child_node.vertices)
+        _params = child_node.line.split()[2:]
 
         pe_texmap = None
         for p in ldraw_node.pe_tex_info:
+            point_min = p.point_min or mathutils.Vector((0, 0))
+            point_max = p.point_max or mathutils.Vector((1, 1))
+            point_diff = p.point_diff or point_max - point_min
+
             # if we have uv data and a pe_tex_info, otherwise pass
             # # custom minifig head > 3626tex.dat (has no pe_tex) > 3626texpole.dat (has no uv data)
             if len(_params) == 15:  # use uvs provided in file
                 pe_texmap = PETexmap()
                 pe_texmap.texture = p.image
 
-                for i in range(vert_count):
-                    if vert_count == 3:
-                        x = round(float(_params[i * 2 + 9]), 3)
-                        y = round(float(_params[i * 2 + 10]), 3)
-                        uv = mathutils.Vector((x, y))
-                        pe_texmap.uvs.append(uv)
-                    elif vert_count == 4:
-                        x = round(float(_params[i * 2 + 11]), 3)
-                        y = round(float(_params[i * 2 + 12]), 3)
-                        uv = mathutils.Vector((x, y))
-                        pe_texmap.uvs.append(uv)
+                uv_params = _params[len(vertices) * 3:]
+                for i in range(len(vertices)):
+                    x = round(float(uv_params[i * 2]), 3)
+                    y = round(float(uv_params[i * 2 + 1]), 3)
+                    uv = mathutils.Vector((x, y))
+                    pe_texmap.uvs.append(uv)
+
             else:
-                continue
-                # TODO: calculate uvs
+                # calculate uvs
                 pe_texmap = PETexmap()
                 pe_texmap.texture = p.image
 
-                face_normal = (child_node.vertices[1] - child_node.vertices[0]).cross(child_node.vertices[2] - child_node.vertices[1])
+                face_normal = (vertices[1] - vertices[0]).cross(vertices[2] - vertices[1])
                 face_normal.normalize()
 
                 texture_normal = mathutils.Vector((0.0, -1, 0.0))
-                face_normal_within_texture_normal = True
-                if face_normal.dot(texture_normal) < 1.0 / 1000.0:
-                    face_normal_within_texture_normal = False
+                normal_dot = face_normal.dot(texture_normal)
+                face_normal_within_texture_normal = abs(normal_dot) >= 1.0 / 1000.0
 
-                for i in range(vert_count):
+                for vert in vertices:
                     # if face is within p.boundingbox
-                    vert = child_node.vertices[i]
                     # is_intersecting = (p.matrix @ p.bounding_box).interects(vert)
 
+                    # TODO: only add uvs for faces that actually have the texture
+                    uv = mathutils.Vector((0, 0))
                     if face_normal_within_texture_normal:  # and is_intersecting:
-                        uv = mathutils.Vector((0, 0))
-                        uv.x = (vert.x - p.point_min.x) / p.point_diff.x
-                        uv.y = (vert.z - p.point_min.y) / p.point_diff.y
-                        pe_texmap.uvs.append(uv)
+                        uv.x = (vert.x - point_min.x) / point_diff.x
+                        uv.y = (vert.z - point_min.y) / point_diff.y
+                        if normal_dot > 0:
+                            uv.y = 1 - uv.y
+                    pe_texmap.uvs.append(uv)
 
         return pe_texmap

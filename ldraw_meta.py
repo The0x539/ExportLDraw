@@ -565,7 +565,7 @@ def meta_edge(child_node, color_code, matrix, geometry_data):
 
 def meta_face(ldraw_node, child_node, color_code, matrix, geometry_data, winding):
     vertices = FaceData.handle_vertex_winding(child_node, matrix, winding)
-    pe_texmap = PETexmap.build_pe_texmap(ldraw_node, child_node)
+    pe_texmap = PETexmap.build_pe_texmap(ldraw_node, child_node, vertices)
 
     geometry_data.add_face_data(
         vertices=vertices,
