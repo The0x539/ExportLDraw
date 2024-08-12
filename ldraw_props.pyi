@@ -41,8 +41,8 @@ class LDrawProps(bpy.types.PropertyGroup):
     export_precision: int
 
 
-def register():
+def register() -> None:
     ...
 
-def unregister():
+def unregister() -> None:
     ...

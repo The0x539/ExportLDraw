@@ -20,8 +20,8 @@ class EXPORT_OT_do_ldraw_export(bpy.types.Operator, ExportHelper):
 def build_export_menu(self, context):
     ...
 
-def register():
+def register() -> None:
     ...
 
-def unregister():
+def unregister() -> None:
     ...

@@ -53,8 +53,8 @@ class IMPORT_OT_do_ldraw_import(bpy.types.Operator):
 def build_import_menu(self, context):
     ...
 
-def register():
+def register() -> None:
     ...
 
-def unregister():
+def unregister() -> None:
     ...

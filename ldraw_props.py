@@ -304,7 +304,7 @@ classesToRegister = [
 registerClasses, unregisterClasses = bpy.utils.register_classes_factory(classesToRegister)
 
 
-def register():
+def register() -> None:
     """Register addon classes"""
 
     registerClasses()
@@ -319,7 +319,7 @@ def register():
     # bpy_types.MeshEdge.ldraw_color_code = bpy.props.StringProperty(name='LDraw color code')
 
 
-def unregister():
+def unregister() -> None:
     """Unregister addon classes"""
 
     unregisterClasses()

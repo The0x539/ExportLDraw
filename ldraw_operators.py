@@ -1,11 +1,17 @@
 import bpy
 import os
+import typing
+
+from bpy.types import Context, Object, Armature
 
 from .definitions import APP_ROOT
 from .import_options import ImportOptions
 from . import matrices
 from . import blender_import
 
+Status = typing.Literal[
+    "RUNNING_MODAL", "CANCELLED", "FINISHED", "PASS_THROUGH", "INTERFACE"
+]
 
 class VertPrecisionOperator(bpy.types.Operator):
     """Round vertex positions to Vertex precision places"""
@@ -18,12 +24,12 @@ class VertPrecisionOperator(bpy.types.Operator):
         obj = context.active_object
         return obj is not None and obj.type == 'MESH'
 
-    def execute(self, context):
+    def execute(self, context: Context) -> set[Status]:
         self.main(context)
         return {'FINISHED'}
 
     # bpy.context.object.active_material = bpy.data.materials[0]
-    def main(self, context):
+    def main(self, context: Context) -> None:
         for obj in context.selected_objects:
             if obj.type != 'MESH':
                 continue
@@ -264,14 +270,21 @@ class RigMinifigOperator(bpy.types.Operator):
 
         return {'FINISHED'}
 
-    def set_bone_layer(self, bone, layer):
+    def set_bone_layer(self, bone: Object, layer: int) -> None:
         for x in range(0, 32):
             if x == layer:
                 bone.layers[x] = True
             else:
                 bone.layers[x] = False
 
-    def rig_twins(self, arm_obj, collection, l_bone_name, r_bone_name):
+    def rig_twins(
+        self,
+        arm_obj: Object,
+        collection: list[Object],
+        l_bone_name: str,
+        r_bone_name: str,
+    ) -> None:
+        assert isinstance(arm_obj.data, Armature)
         l_bone = arm_obj.data.bones[l_bone_name]
         r_bone = arm_obj.data.bones[r_bone_name]
         l_bone_loc = arm_obj.location + l_bone.head
@@ -284,7 +297,7 @@ class RigMinifigOperator(bpy.types.Operator):
             d1l = obj1.location - l_bone_loc
             d1r = obj1.location - r_bone_loc
 
-            if d1l < d1r:
+            if d1l.length_squared < d1r.length_squared:
                 parent(arm_obj, obj1, l_bone_name)
             else:
                 parent(arm_obj, obj1, r_bone_name)
@@ -298,14 +311,14 @@ class RigMinifigOperator(bpy.types.Operator):
             d1l = obj1.location - l_bone_loc
             d1r = obj1.location - r_bone_loc
 
-            if d1l < d1r:
+            if d1l.length_squared < d1r.length_squared:
                 parent(arm_obj, obj1, r_bone_name)
                 parent(arm_obj, obj2, l_bone_name)
             else:
                 parent(arm_obj, obj1, l_bone_name)
                 parent(arm_obj, obj2, r_bone_name)
 
-    def show_bone_groups(self, arm_obj):
+    def show_bone_groups(self, arm_obj: Object) -> None:
         return
         if bpy.app.version >= (4,):
             # make all used bone groups visible so they can be used here
@@ -315,7 +328,7 @@ class RigMinifigOperator(bpy.types.Operator):
 
     # if the collection is not visible, we can't select the bones
     # so show them all at the start then hide them when we're done
-    def hide_bone_groups(self, arm_obj):
+    def hide_bone_groups(self, arm_obj: Object) -> None:
         return
         if bpy.app.version >= (4,):
             arm_obj.data.collections["rock"].is_visible = False
@@ -342,14 +355,14 @@ class RigPartsOperator(bpy.types.Operator):
     bl_label = "Rig parts"
     bl_options = {'UNDO'}
 
-    def execute(self, context):
+    def execute(self, context: Context) -> set[Status]:
         active_obj = context.active_object
         if active_obj is None or active_obj.type != 'MESH':
-            return
+            return set()
 
         selected_objects = bpy.context.selected_objects
         if len(selected_objects) < 1:
-            return
+            return set()
 
         context.scene.cursor.location = active_obj.location
 
@@ -363,6 +376,7 @@ class RigPartsOperator(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
         # first bone is created when armature is created so skip that object
+        assert isinstance(arm_obj.data, Armature)
         edit_bone = arm_obj.data.bones[-1]
         first_bone = edit_bone.name
 
@@ -384,8 +398,8 @@ class RigPartsOperator(bpy.types.Operator):
             context.view_layer.objects.active = arm_obj
             bpy.ops.object.mode_set(mode='EDIT', toggle=False)
 
-        for edit_bone in arm_obj.data.edit_bones:
-            edit_bone.parent = arm_obj.data.edit_bones[first_bone]
+        for _edit_bone in arm_obj.data.edit_bones:
+            _edit_bone.parent = arm_obj.data.edit_bones[first_bone]
 
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
 
@@ -398,7 +412,7 @@ class MakeGapsOperator(bpy.types.Operator):
     bl_label = "Make gaps"
     bl_options = {'UNDO'}
 
-    def execute(self, context):
+    def execute(self, context: Context) -> set[Status]:
         for obj in context.selected_objects:
             if obj.type != 'MESH':
                 continue
@@ -409,11 +423,12 @@ class MakeGapsOperator(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def parent(arm, obj, bone_name):
+def parent(arm: Object, obj: Object, bone_name: str) -> None:
     obj.select_set(True)
 
     arm.select_set(True)
     bpy.context.view_layer.objects.active = arm
+    assert isinstance(arm.data, Armature)
     arm.data.bones.active = arm.data.bones[bone_name]
 
     bpy.ops.object.parent_set(type='BONE', keep_transform=True)
@@ -435,16 +450,16 @@ classesToRegister = [
 ]
 
 # https://wiki.blender.org/wiki/Reference/Release_Notes/2.80/Python_API/Addons
-registerClasses, unregisterClasses = bpy.utils.register_classes_factory(classesToRegister)
+registerClasses, unregisterClasses = bpy.utils.register_classes_factory(classesToRegister) # type: ignore
 
 
-def register():
+def register() -> None:
     """Register addon classes"""
 
     registerClasses()
 
 
-def unregister():
+def unregister() -> None:
     """Unregister addon classes"""
 
     unregisterClasses()

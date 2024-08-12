@@ -1,9 +1,13 @@
 import bpy
+import typing
+
+from bpy.types import Context
 
 from . import ldraw_operators
+from . import ldraw_props
 
 
-def do_poll(context):
+def do_poll(context: Context) -> bool:
     selected_objects = context.selected_objects
     obj = context.object
     obj = context.active_object
@@ -32,11 +36,11 @@ class CO_PT_ldraw_panel(bpy.types.Panel):
     bl_category = 'LDraw'
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context: Context) -> bool:
         return do_poll(context)
 
-    def draw(self, context):
-        obj = context.object
+    def draw(self, context: Context) -> None:
+        obj = typing.cast(ldraw_props.Object, context.object)
 
         layout = self.layout
         layout.use_property_split = True
@@ -71,7 +75,7 @@ class CO_PT_ldraw_eo_panel(bpy.types.Panel):
     bl_context = 'objectmode'
     bl_category = 'LDraw'
 
-    def draw(self, context):
+    def draw(self, context: Context) -> None:
         layout = self.layout
         # layout.use_property_split = True
         layout.use_property_decorate = False
@@ -106,11 +110,11 @@ class CO_PT_ldraw_cu_panel(bpy.types.Panel):
     bl_category = 'LDraw'
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context: Context) -> bool:
         return do_poll(context)
 
-    def draw(self, context):
-        obj = context.object
+    def draw(self, context: Context) -> None:
+        obj = typing.cast(ldraw_props.Object, context.object)
 
         layout = self.layout
         # layout.use_property_split = True
@@ -131,11 +135,11 @@ class CO_PT_ldraw_ex_panel(bpy.types.Panel):
     bl_category = 'LDraw'
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context: Context) -> bool:
         return do_poll(context)
 
-    def draw(self, context):
-        obj = context.object
+    def draw(self, context: Context) -> None:
+        obj = typing.cast(ldraw_props.Object, context.object)
 
         layout = self.layout
         # layout.use_property_split = True
@@ -156,16 +160,16 @@ classesToRegister = [
 ]
 
 # https://wiki.blender.org/wiki/Reference/Release_Notes/2.80/Python_API/Addons
-registerClasses, unregisterClasses = bpy.utils.register_classes_factory(classesToRegister)
+registerClasses, unregisterClasses = bpy.utils.register_classes_factory(classesToRegister) # type: ignore
 
 
-def register():
+def register() -> None:
     """Register addon classes"""
 
     registerClasses()
 
 
-def unregister():
+def unregister() -> None:
     """Unregister addon classes"""
 
     unregisterClasses()

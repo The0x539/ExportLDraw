@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 import typing
 
@@ -5,7 +7,6 @@ from mathutils import Vector, Matrix
 
 from .geometry_data import GeometryData
 from .import_options import ImportOptions
-from .ldraw_file import LDrawFile
 from .pe_texmap import PETexInfo
 from .texmap import TexMap
 from . import group
@@ -14,6 +15,8 @@ from . import ldraw_object
 from . import ldraw_meta
 from . import matrices
 
+if typing.TYPE_CHECKING:
+    from .ldraw_file import LDrawFile
 
 class LDrawNode:
     """
