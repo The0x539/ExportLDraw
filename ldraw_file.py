@@ -15,6 +15,7 @@ from . import base64_handler
 from . import helpers
 from . import ldraw_part_types
 from . import texmap
+from . import studio_color
 
 
 class LDrawFile:
@@ -84,6 +85,8 @@ class LDrawFile:
         ldraw_file = LDrawFile.get_file(filename)
         if filename == alt_filename and ldraw_file is None:
             ldraw_file = LDrawFile.get_file(standard_filename)
+
+        studio_color.load_xml("C:/Program Files/Studio 2.0 EarlyAccess/data/CustomColors/CustomColorSettings.xml")
 
         # import all materials
         # from .blender_materials import BlenderMaterials
