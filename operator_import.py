@@ -472,7 +472,7 @@ registerClasses, unregisterClasses = bpy.utils.register_classes_factory(classesT
 
 def register():
     bpy.utils.register_class(IMPORT_OT_do_ldraw_import)
-    bpy.types.TOPBAR_MT_file_import.append(build_import_menu)
+    bpy.types.TOPBAR_MT_file_import.prepend(build_import_menu)
 
 
 def unregister():

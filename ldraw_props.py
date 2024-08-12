@@ -9,14 +9,9 @@ def set_props(obj, ldraw_file, color_code):
     obj.ldraw_props.description = ldraw_file.description or ""
     obj.ldraw_props.name = ldraw_file.name or ""
     obj.ldraw_props.author = ldraw_file.author or ""
-    try:
-        obj.ldraw_props.part_type = ldraw_file.actual_part_type or ""
-    except TypeError as e:
-        print(e)
-        print(ldraw_file)
-        import traceback
-        print(traceback.format_exc())
-        obj.ldraw_props.part_type = 'Unknown'
+    if not ldraw_file.actual_part_type:
+        pass
+    obj.ldraw_props.part_type = ldraw_file.actual_part_type or 'Unknown'
     obj.ldraw_props.actual_part_type = ldraw_file.actual_part_type or ""
     obj.ldraw_props.optional_qualifier = ldraw_file.optional_qualifier or ""
     obj.ldraw_props.update_date = ldraw_file.update_date or ""
