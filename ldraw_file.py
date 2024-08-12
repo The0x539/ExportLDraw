@@ -26,37 +26,37 @@ class LDrawFile:
     __parsed_file_cache: dict[str, LDrawFile] = {}
 
     @classmethod
-    def reset_caches(cls):
+    def reset_caches(cls) -> None:
         cls.__unparsed_file_cache.clear()
         cls.__parsed_file_cache.clear()
 
-    def __init__(self, filename):
+    def __init__(self, filename: str) -> None:
         self.filename = filename
-        self.lines = []
+        self.lines: list[str] = []
 
-        self.description = None
+        self.description: str | None = None
         self.name = os.path.basename(filename)
-        self.author = None
+        self.author: str | None = None
         # default part_type of ldraw_file is None, which should mean "model" - see ldraw_part_types.model_types
         # it is far more likely that a part type will not be specified in models since they are more likely
         # to be authored by a user outside of specifications
-        self.part_type = None
-        self.actual_part_type = None
-        self.optional_qualifier = None
-        self.update_date = None
-        self.license = None
-        self.help = []
-        self.category = []
-        self.keywords = []
-        self.cmdline = None
-        self.history = []
+        self.part_type: str | None = None
+        self.actual_part_type: str | None = None
+        self.optional_qualifier: str | None = None
+        self.update_date: str | None = None
+        self.license: str | None = None
+        self.help: list[str] = []
+        self.category: list[str] = []
+        self.keywords: list[str] = []
+        self.cmdline: str | None = None
+        self.history: list[list[str]] = []
 
-        self.child_nodes = []
-        self.geometry_commands = {}
+        self.child_nodes: list[LDrawNode] = []
+        self.geometry_commands: dict[str, int] = {}
 
         self.named = False
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "\n".join([
             f"filename: {self.filename}",
             f"description: {self.description}",
@@ -66,7 +66,7 @@ class LDrawFile:
         ])
 
     @classmethod
-    def read_color_table(cls):
+    def read_color_table(cls) -> LDrawFile | None:
         """Reads the color values from the LDConfig.ldr file. For details of the
         LDraw color system see: http://www.ldraw.org/article/547"""
 
@@ -237,7 +237,7 @@ class LDrawFile:
 
     # create meta nodes when those commands affect the scene
     # process meta command in place if it only affects the file
-    def __parse_file(self):
+    def __parse_file(self) -> None:
         for line in self.lines:
             try:
                 clean_line = helpers.clean_line(line)
@@ -273,7 +273,7 @@ class LDrawFile:
                 continue
 
     # always return false so that the rest of the line types are parsed even if this is true
-    def __line_description(self, strip_line):
+    def __line_description(self, strip_line: str) -> bool:
         if self.description is None:
             parts = strip_line.split(maxsplit=1)
             if len(parts) > 1:
@@ -283,7 +283,7 @@ class LDrawFile:
 
     # name and author are allowed to be case insensitive
     # https://forums.ldraw.org/thread-23904-post-35984.html#pid35984
-    def __line_name(self, clean_line, strip_line):
+    def __line_name(self, clean_line: str, strip_line: str) -> bool:
         if clean_line.lower().startswith("0 Name: ".lower()):
             if self.named:
                 return True
@@ -292,13 +292,13 @@ class LDrawFile:
             return True
         return False
 
-    def __line_author(self, clean_line, strip_line):
+    def __line_author(self, clean_line: str, strip_line: str) -> bool:
         if clean_line.lower().startswith("0 Author: ".lower()):
             self.author = strip_line.split(maxsplit=2)[2]
             return True
         return False
 
-    def __line_part_type(self, clean_line, strip_line):
+    def __line_part_type(self, clean_line: str, strip_line: str) -> bool:
         in_part_type = False
         for date_type in ["ORIGINAL", "UPDATE"]:
             # print(strip_line)
@@ -356,49 +356,49 @@ class LDrawFile:
 
         return False
 
-    def __line_license(self, strip_line):
+    def __line_license(self, strip_line: str) -> bool:
         if strip_line.startswith("0 !LICENSE "):
             self.license = strip_line.split(maxsplit=2)[2]
             return True
         return False
 
-    def __line_help(self, strip_line):
+    def __line_help(self, strip_line: str) -> bool:
         if strip_line.startswith("0 !HELP "):
             self.help.append(strip_line.split(maxsplit=2)[2])
             return True
         return False
 
-    def __line_category(self, strip_line):
+    def __line_category(self, strip_line: str) -> bool:
         if strip_line.startswith("0 !CATEGORY "):
             self.category.append(strip_line.split(maxsplit=2)[2])
             return True
         return False
 
-    def __line_keywords(self, strip_line):
+    def __line_keywords(self, strip_line: str) -> bool:
         if strip_line.startswith("0 !KEYWORDS "):
             self.keywords += strip_line.split(maxsplit=2)[2].split(',')
             return True
         return False
 
-    def __line_cmdline(self, strip_line):
+    def __line_cmdline(self, strip_line: str) -> bool:
         if strip_line.startswith("0 !CMDLINE "):
             self.cmdline = strip_line.split(maxsplit=2)[2]
             return True
         return False
 
-    def __line_history(self, strip_line):
+    def __line_history(self, strip_line: str) -> bool:
         if strip_line.startswith("0 !HISTORY "):
             self.history.append(strip_line.split(maxsplit=4)[2:])
             return True
         return False
 
-    def __line_comment(self, clean_line):
+    def __line_comment(self, clean_line: str) -> bool:
         if clean_line.startswith("0 //"):
             return True
         return False
 
     # TODO: add collection of colors specific to this file
-    def __line_color(self, clean_line):
+    def __line_color(self, clean_line: str) -> bool:
         if clean_line.startswith("0 !COLOUR "):
             if self.is_configuration():
                 LDrawColor.parse_color(clean_line)
@@ -411,7 +411,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_bfc(self, clean_line, strip_line):
+    def __line_bfc(self, clean_line: str, strip_line: str) -> bool:
         if strip_line.startswith("0 BFC "):
             ldraw_node = LDrawNode()
             ldraw_node.line = clean_line
@@ -421,7 +421,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_step(self, clean_line):
+    def __line_step(self, clean_line: str) -> bool:
         if clean_line.startswith("0 STEP"):
             ldraw_node = LDrawNode()
             ldraw_node.line = clean_line
@@ -430,7 +430,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_save(self, clean_line):
+    def __line_save(self, clean_line: str) -> bool:
         if clean_line.startswith("0 SAVE"):
             ldraw_node = LDrawNode()
             ldraw_node.line = clean_line
@@ -439,7 +439,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_clear(self, clean_line):
+    def __line_clear(self, clean_line: str) -> bool:
         if clean_line.startswith("0 CLEAR"):
             ldraw_node = LDrawNode()
             ldraw_node.line = clean_line
@@ -448,7 +448,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_print(self, clean_line):
+    def __line_print(self, clean_line: str) -> bool:
         if clean_line.startswith("0 PRINT ") or clean_line.startswith("0 WRITE "):
             ldraw_node = LDrawNode()
             ldraw_node.line = clean_line
@@ -459,7 +459,7 @@ class LDrawFile:
         return False
 
     # http://www.melkert.net/LDCad/tech/meta
-    def __line_ldcad(self, clean_line):
+    def __line_ldcad(self, clean_line: str) -> bool:
         if clean_line.startswith("0 !LDCAD GROUP_DEF "):
             ldraw_node = LDrawNode()
             ldraw_node.line = clean_line
@@ -468,18 +468,21 @@ class LDrawFile:
             # 0 !LDCAD GROUP_DEF [topLevel=true] [LID=119507361] [GID=FsMGcO9CYmY] [name=Group 12] [center=0 0 0]
             _params = re.search(r"\S+\s+\S+\s+\S+\s+(\[.*\])\s+(\[.*\])\s+(\[.*\])\s+(\[.*\])\s+(\[.*\])", clean_line)
             if not _params:
-                return
+                return False
 
             lid_str = _params[2]  # "[LID=119507361]"
             lid_args = re.search(r"\[(.*)=(.*)\]", lid_str)
+            assert lid_args is not None
             ldraw_node.meta_args["id"] = lid_args[2]  # "119507361"
 
             name_str = _params[4]  # "[name=Group 12]"
             name_args = re.search(r"\[(.*)=(.*)\]", name_str)
+            assert name_args is not None
             ldraw_node.meta_args["name"] = name_args[2]  # "Group 12"
 
             center_str = _params[5]  # "[center=0 0 0]"
             name_args = re.search(r"\[(.*)=(.*)\]", center_str)
+            assert name_args is not None
             center_str_val = name_args[2]  # "0 0 0"
             (x, y, z) = map(float, center_str_val.split())
             ldraw_node.meta_args["center"] = mathutils.Vector((x, y, z))
@@ -494,9 +497,11 @@ class LDrawFile:
 
             # 0 !LDCAD GROUP_NXT [ids=13016969] [nrs=-1]
             _params = re.search(r"\S+\s+\S+\s+\S+\s+(\[.*\])\s+(\[.*\])", clean_line)
+            assert _params is not None
 
             ids_str = _params[1]  # "[ids=13016969]"
             ids_args = re.search(r"\[(.*)=(.*)\]", ids_str)
+            assert ids_args is not None
             ldraw_node.meta_args["id"] = ids_args[2]  # "13016969"
 
             self.child_nodes.append(ldraw_node)
@@ -504,7 +509,7 @@ class LDrawFile:
         return False
 
     # https://www.leocad.org/docs/meta.html
-    def __line_leocad(self, clean_line):
+    def __line_leocad(self, clean_line: str) -> bool:
         if clean_line.startswith("0 !LEOCAD GROUP BEGIN "):
             name_args = clean_line.split(maxsplit=4)
             ldraw_node = LDrawNode()
@@ -529,7 +534,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_texmap(self, clean_line):
+    def __line_texmap(self, clean_line: str) -> bool:
         if clean_line.startswith("0 !TEXMAP "):
             ldraw_node = LDrawNode()
             ldraw_node.line = clean_line
@@ -538,7 +543,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_stud_io(self, clean_line):
+    def __line_stud_io(self, clean_line: str) -> bool:
         if clean_line.startswith("0 PE_TEX_PATH "):
             ldraw_node = LDrawNode()
             ldraw_node.line = clean_line
@@ -562,7 +567,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_subfile(self, clean_line, strip_line):
+    def __line_subfile(self, clean_line: str, strip_line: str) -> bool:
         if clean_line.startswith("1 "):
             _params = clean_line.split(maxsplit=14)
             _sparams = strip_line.split(maxsplit=14)
@@ -616,7 +621,7 @@ class LDrawFile:
             return True
         return False
 
-    def __line_geometry(self, clean_line):
+    def __line_geometry(self, clean_line: str) -> bool:
         if (clean_line.startswith("2 ") or
                 clean_line.startswith("3 ") or
                 clean_line.startswith("4 ") or
@@ -636,7 +641,7 @@ class LDrawFile:
         return False
 
     @staticmethod
-    def __parse_face(_params):
+    def __parse_face(_params: list[str]) -> list[mathutils.Vector]:
         line_type = _params[0]
         vert_count = 0
         if line_type == "2":
@@ -663,7 +668,7 @@ class LDrawFile:
 
     # if there's a line type specified, determine what that type is
     @staticmethod
-    def determine_part_type(actual_part_type):
+    def determine_part_type(actual_part_type: str) -> str:
         _actual_part_type = actual_part_type.lower()
         if "primitive" in _actual_part_type:
             return "primitive"
@@ -680,51 +685,51 @@ class LDrawFile:
         return "part"
 
     # TODO: move to varaibles to prevent list lookups
-    def is_configuration(self):
+    def is_configuration(self) -> bool:
         return self.part_type in ldraw_part_types.configuration_types
 
     # this allows shortcuts to be split into their individual parts if desired
-    def is_like_model(self):
+    def is_like_model(self) -> bool:
         return self.is_model() or self.is_shortcut_model()
 
-    def is_model(self):
+    def is_model(self) -> bool:
         return self.part_type in ldraw_part_types.model_types
 
-    def is_shortcut(self):
+    def is_shortcut(self) -> bool:
         return self.part_type in ldraw_part_types.shortcut_types
 
-    def is_shortcut_model(self):
+    def is_shortcut_model(self) -> bool:
         return self.is_shortcut() and ImportOptions.treat_shortcut_as_model
 
-    def is_shortcut_part(self):
+    def is_shortcut_part(self) -> bool:
         return self.is_shortcut() and not ImportOptions.treat_shortcut_as_model
 
-    def is_part(self):
+    def is_part(self) -> bool:
         return self.part_type in ldraw_part_types.part_types
 
-    def is_like_part(self):
+    def is_like_part(self) -> bool:
         return self.is_part() or self.is_shortcut_part() or self.has_geometry()
 
-    def is_subpart(self):
+    def is_subpart(self) -> bool:
         return self.part_type in ldraw_part_types.subpart_types
 
-    def is_primitive(self):
+    def is_primitive(self) -> bool:
         return self.part_type in ldraw_part_types.primitive_types
 
-    def is_like_stud(self):
+    def is_like_stud(self) -> bool:
         return self.name.startswith("stud")
 
-    def is_stud(self):
+    def is_stud(self) -> bool:
         return self.name in ldraw_part_types.stud_names
 
-    def is_edge_logo(self):
+    def is_edge_logo(self) -> bool:
         return self.name in ldraw_part_types.edge_logo_names
 
-    def is_logo(self):
+    def is_logo(self) -> bool:
         return self.name in ldraw_part_types.logo_names
 
-    def is_geometry(self):
+    def is_geometry(self) -> bool:
         return self.is_subpart() or self.is_primitive()
 
-    def has_geometry(self):
+    def has_geometry(self) -> bool:
         return sum(self.geometry_commands.values()) > 0
