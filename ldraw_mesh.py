@@ -2,8 +2,11 @@ import bpy
 import bmesh
 import mathutils
 
+from bpy.types import Mesh
+
 from .blender_materials import BlenderMaterials
 from .import_options import ImportOptions
+from .geometry_data import GeometryData
 from . import special_bricks
 from . import strings
 from . import helpers
@@ -29,7 +32,7 @@ def create_mesh(key, geometry_data, color_code, return_mesh=False):
 
 # for edge_data in geometry_data.line_data:
 # for vertex in edge_data.vertices[0:2]:  # in case line_data is being used since it has 4 verts
-def create_edge_mesh(key, geometry_data):
+def create_edge_mesh(key, geometry_data: GeometryData) -> Mesh:
     mesh = bpy.data.meshes.get(key)
     if mesh is None:
         e_verts = []

@@ -3,6 +3,7 @@ import mathutils
 import os
 import re
 import zipfile
+import typing
 
 from .import_options import ImportOptions
 from .filesystem import FileSystem
@@ -12,7 +13,6 @@ from . import base64_handler
 from . import helpers
 from . import ldraw_part_types
 from . import texmap
-from . import Dummy
 
 
 class LDrawFile:
@@ -20,8 +20,8 @@ class LDrawFile:
     A file that has been loaded and its lines converted to header data and ldraw_nodes.
     """
 
-    __unparsed_file_cache: dict[Dummy, Dummy] = {}
-    __parsed_file_cache: dict[Dummy, Dummy] = {}
+    __unparsed_file_cache: dict[str, LDrawFile] = {}
+    __parsed_file_cache: dict[str, LDrawFile] = {}
 
     @classmethod
     def reset_caches(cls):
@@ -94,7 +94,7 @@ class LDrawFile:
         return ldraw_file
 
     @classmethod
-    def get_file(cls, filename):
+    def get_file(cls, filename: str) -> LDrawFile | None:
         ldraw_file = cls.__parsed_file_cache.get(filename)
         if ldraw_file is not None:
             return ldraw_file
@@ -111,7 +111,7 @@ class LDrawFile:
         return ldraw_file
 
     @classmethod
-    def __load_file(cls, filename):
+    def __load_file(cls, filename: str) -> LDrawFile | None:
         filepath = FileSystem.locate(filename)
         if filepath is None:
             return None
@@ -125,7 +125,7 @@ class LDrawFile:
             return cls.__read_file(file, filename)
 
     @classmethod
-    def __read_file(cls, file, filename):
+    def __read_file(cls, file: typing.Iterable[str], filename: str) -> LDrawFile | None:
         hit_not_blank_line = False
         is_mpd = None
         no_file = False
@@ -133,7 +133,7 @@ class LDrawFile:
         current_file = None
         current_mpd_file = None
         current_data_filename = None
-        current_data = None
+        current_data: typing.Iterable[str] | None = None
 
         for line in file:
             clean_line = helpers.clean_line(line)
@@ -216,6 +216,7 @@ class LDrawFile:
                 continue
 
         if current_data_filename is not None:
+            assert current_data is not None
             base64_handler.named_png_from_base64_str(current_data_filename, "".join(current_data))
             current_data_filename = None
             current_data = None

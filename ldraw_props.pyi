@@ -7,6 +7,9 @@ def set_props(obj, ldraw_file, color_code):
 def get_header_lines(obj, is_model=False):
     ...
 
+class Object(bpy.types.Object):
+    ldraw_props: LDrawProps
+
 class LDrawProps(bpy.types.PropertyGroup):
     filename: str
     description: str

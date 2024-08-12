@@ -4,21 +4,23 @@ from . import helpers
 from .import_options import ImportOptions
 from . import Dummy
 
-top_collection = None
-current_file_collection = None
-parts_collection = None
-files_collection = None
-groups_collection = None
-ungrouped_collection = None
-next_collections: list[Dummy] = []
-stored_collection = None
-next_collection = None
+from bpy.types import Collection
+
+top_collection: Collection | None = None
+current_file_collection: Collection | None = None
+parts_collection: Collection | None = None
+files_collection: Collection | None = None
+groups_collection: Collection | None = None
+ungrouped_collection: Collection | None = None
+next_collections: list[Collection] = []
+stored_collection: Collection | None = None
+next_collection: Collection | None = None
 end_next_collection = False
-current_step_group = None
-collection_id_map: dict[Dummy, Dummy] = {}
+current_step_group: Collection | None = None
+collection_id_map: dict[str, str] = {}
 
 
-def reset_caches():
+def reset_caches() -> None:
     global top_collection
     global current_file_collection
     global parts_collection
@@ -44,7 +46,7 @@ def reset_caches():
     collection_id_map.clear()
 
 
-def groups_setup(top_collection_name):
+def groups_setup(top_collection_name: str) -> None:
     global top_collection
     global current_file_collection
     global parts_collection
@@ -81,11 +83,11 @@ def groups_setup(top_collection_name):
         ungrouped_collection = collection
 
 
-def get_scene_collection():
+def get_scene_collection() -> Collection:
     return bpy.context.scene.collection
 
 
-def get_collection(collection_name, host_collection):
+def get_collection(collection_name, host_collection) -> Collection:
     collection_name = collection_name[:63]
     collection = bpy.data.collections.get(collection_name)
     if collection is None:
@@ -95,7 +97,10 @@ def get_collection(collection_name, host_collection):
     return collection
 
 
-def get_filename_collection(collection_name, host_collection=None):
+def get_filename_collection(
+    collection_name: str,
+    host_collection: Collection | None = None,
+) -> Collection:
     collection_name = os.path.basename(collection_name)
     collection = bpy.data.collections.new(collection_name)
     if host_collection is None:

@@ -8,11 +8,11 @@ from . import helpers
 texmap_prefix = "0 !: "
 
 
-def is_texmap_line(line):
+def is_texmap_line(line: str) -> bool:
     return line.startswith(texmap_prefix)
 
 
-def clean_line(line):
+def clean_line(line: str) -> str:
     return line.replace(texmap_prefix, "")
 
 

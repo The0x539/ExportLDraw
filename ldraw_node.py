@@ -7,7 +7,6 @@ from . import ldraw_mesh
 from . import ldraw_object
 from . import ldraw_meta
 from . import matrices
-from . import Dummy
 
 
 class LDrawNode:
@@ -19,8 +18,8 @@ class LDrawNode:
     current_filename = ""
     current_model_filename = ""
 
-    key_map: dict[Dummy, Dummy] = {}
-    geometry_datas: dict[Dummy, Dummy] = {}
+    key_map: dict[tuple, str] = {}
+    geometry_datas: dict[str, GeometryData] = {}
 
     @classmethod
     def reset_caches(cls):
@@ -55,12 +54,12 @@ class LDrawNode:
              color_code="16",
              parent_matrix=None,
              accum_matrix=None,
-             geometry_data=None,
+             geometry_data: GeometryData | None = None,
              accum_cull=True,
              accum_invert=False,
              parent_collection=None,
              return_mesh=False,
-             ):
+             ) -> None:
 
         if self.file.is_edge_logo() and not ImportOptions.display_logo:
             return
@@ -319,8 +318,8 @@ class LDrawNode:
     # must include matrix, so that parts that are just mirrored versions of other parts
     # such as 32527.dat (mirror of 32528.dat) will render
     @staticmethod
-    def __build_key(filename, color_code=None, pe_tex_info=None, matrix=None):
-        _key = (filename, color_code,)
+    def __build_key(filename, color_code=None, pe_tex_info=None, matrix=None) -> str:
+        _key: tuple = (filename, color_code,)
 
         if pe_tex_info is not None:
             for p in pe_tex_info:
@@ -333,8 +332,7 @@ class LDrawNode:
         if len(str_key) < 60:
             return str(str_key)
 
-        key = LDrawNode.key_map.get(_key)
-        if key is None:
+        if _key not in LDrawNode.key_map:
             LDrawNode.key_map[_key] = str(uuid.uuid4())
-            key = LDrawNode.key_map.get(_key)
-        return key
+
+        return LDrawNode.key_map[_key]

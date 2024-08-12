@@ -7,11 +7,10 @@ from .definitions import APP_ROOT
 from .ldraw_color import LDrawColor
 from .filesystem import FileSystem
 from . import strings
-from . import Dummy
 
 
 class BlenderMaterials:
-    __key_map: dict[Dummy, Dummy] = {}
+    __key_map: dict[tuple, str] = {}
 
     @classmethod
     def reset_caches(cls):
@@ -72,8 +71,8 @@ class BlenderMaterials:
         return material
 
     @classmethod
-    def __build_key(cls, color, bfc_certified, part_slopes, parts_cloth, texmap, pe_texmap):
-        _key = ()
+    def __build_key(cls, color, bfc_certified, part_slopes, parts_cloth, texmap, pe_texmap) -> str:
+        _key: tuple = ()
 
         _key += (color.name, color.code,)
 
@@ -97,12 +96,10 @@ class BlenderMaterials:
         if len(str_key) < 60:
             return str(str_key)
 
-        key = cls.__key_map.get(_key)
-        if key is None:
+        if _key not in cls.__key_map:
             cls.__key_map[_key] = str(uuid.uuid4())
-            key = cls.__key_map.get(_key)
 
-        return key
+        return cls.__key_map[_key]
 
     @classmethod
     def __create_node_based_material(cls, key, color, bfc_certified=True, part_slopes=None, parts_cloth=False, texmap=None, pe_texmap=None):

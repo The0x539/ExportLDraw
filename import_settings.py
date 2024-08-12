@@ -1,4 +1,5 @@
 import os.path
+import typing
 
 from .import_options import ImportOptions
 from .filesystem import FileSystem
@@ -8,7 +9,7 @@ from . import helpers
 
 class ImportSettings:
     settings_path = os.path.join('config', 'ImportOptions.json')
-    settings = None
+    settings: dict[str, typing.Any] = None # type: ignore[assignment]
 
     filesystem_defaults = FileSystem.defaults
     ldraw_color_defaults = LDrawColor.defaults
@@ -21,14 +22,14 @@ class ImportSettings:
     }
 
     @classmethod
-    def settings_dict(cls, key):
+    def settings_dict(cls, key: str):
         return {
             "get": lambda self: cls.get_setting(key),
             "set": lambda self, value: cls.set_setting(key, value),
         }
 
     @classmethod
-    def get_setting(cls, key):
+    def get_setting(cls, key: str) -> typing.Any:
         if cls.settings is None:
             cls.load_settings()
 
@@ -42,23 +43,23 @@ class ImportSettings:
             return default
 
     @classmethod
-    def __setattr__(cls, key, value):
+    def __setattr__(cls, key: str, value: object) -> None:
         cls.settings[key] = value
 
     @classmethod
-    def set_setting(cls, k, v):
+    def set_setting(cls, k: str, v: object) -> None:
         cls.settings[k] = v
 
     @classmethod
-    def load_settings(cls):
+    def load_settings(cls) -> None:
         cls.settings = helpers.read_json(cls.settings_path, cls.default_settings)
 
     @classmethod
-    def save_settings(cls):
+    def save_settings(cls) -> None:
         helpers.write_json(cls.settings_path, cls.settings)
 
     @classmethod
-    def apply_settings(cls):
+    def apply_settings(cls) -> None:
         for k, v in cls.filesystem_defaults.items():
             setattr(FileSystem, k, cls.settings[k])
 

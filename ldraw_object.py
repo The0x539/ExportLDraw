@@ -1,5 +1,7 @@
 import bpy
 
+import typing
+
 from .import_options import ImportOptions
 from .ldraw_color import LDrawColor
 from . import group
@@ -9,11 +11,11 @@ from . import ldraw_meta
 from . import matrices
 
 
-top_empty = None
-gap_scale_empty = None
+top_empty: ldraw_props.Object | None = None
+gap_scale_empty: None = None
 
 
-def reset_caches():
+def reset_caches() -> None:
     global top_empty
     global gap_scale_empty
 
@@ -57,12 +59,13 @@ def create_edge_obj(mesh, geometry_data, color_code, obj, collection):
     return edge_obj
 
 
-def __process_top_object_matrix(obj, obj_matrix):
+def __process_top_object_matrix(obj: ldraw_props.Object, obj_matrix) -> None:
     global top_empty
 
     if ImportOptions.parent_to_empty:
         if top_empty is None:
-            top_empty = bpy.data.objects.new(group.top_collection.name, None)
+            name = group.top_collection.name # type: ignore[union-attr]
+            top_empty = typing.cast(ldraw_props.Object, bpy.data.objects.new(name, None))
             top_empty.ldraw_props.invert_import_scale_matrix = True
             group.link_obj(group.top_collection, top_empty)
 

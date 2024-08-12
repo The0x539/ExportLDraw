@@ -70,10 +70,10 @@ class ImportOptions:
     set_end_frame = defaults["set_end_frame"]
 
     defaults["starting_step_frame"] = 1
-    starting_step_frame = defaults["starting_step_frame"]
+    starting_step_frame: int = defaults["starting_step_frame"] # type: ignore[assignment]
 
     defaults["frames_per_step"] = 3
-    frames_per_step = defaults["frames_per_step"]
+    frames_per_step: int = defaults["frames_per_step"] # type: ignore[assignment]
 
     defaults["set_timeline_markers"] = False
     set_timeline_markers = defaults["set_timeline_markers"]

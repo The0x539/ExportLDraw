@@ -5,18 +5,19 @@ from .import_options import ImportOptions
 from .pe_texmap import PETexInfo, PETexmap
 from .texmap import TexMap
 from .geometry_data import FaceData
+from .ldraw_node import LDrawNode
+from .ldraw_camera import LDrawCamera
 from . import group
 from . import helpers
 from . import ldraw_camera
-from . import Dummy
 
 current_frame = 0
 current_step = 0
-cameras: list[Dummy] = []
-camera = None
+cameras: list[LDrawCamera] = []
+camera: LDrawCamera | None = None
 
 
-def reset_caches():
+def reset_caches() -> None:
     global current_frame
     global current_step
     global cameras
@@ -105,7 +106,7 @@ def meta_bfc(ldraw_node, child_node, matrix, local_cull, winding, invert_next, a
     return local_cull, winding, invert_next
 
 
-def meta_step():
+def meta_step() -> None:
     global current_step
     global current_frame
 
@@ -121,6 +122,8 @@ def meta_step():
         bpy.context.scene.timeline_markers.new("STEP", frame=current_frame)
 
     if ImportOptions.meta_step_groups:
+        assert group.top_collection is not None
+
         collection_name = f"{group.top_collection.name} Steps"
         host_collection = group.top_collection
         steps_collection = group.get_collection(collection_name, host_collection)
@@ -177,7 +180,9 @@ def meta_group(child_node):
             meta_group_end()
 
 
-def meta_group_def(child_node):
+def meta_group_def(child_node: LDrawNode) -> None:
+    assert group.top_collection is not None
+
     group.collection_id_map[child_node.meta_args["id"]] = child_node.meta_args["name"]
     name = group.collection_id_map[child_node.meta_args["id"]]
     collection_name = f"{group.top_collection.name} {name}"
@@ -196,9 +201,11 @@ def meta_group_nxt(child_node):
     group.end_next_collection = True
 
 
-def meta_group_begin(child_node):
+def meta_group_begin(child_node) -> None:
     if group.next_collection is not None:
         group.next_collections.append(group.next_collection)
+
+    assert group.top_collection is not None
 
     name = child_node.meta_args["name"]
     collection_name = f"{group.top_collection.name} {name}"
@@ -228,7 +235,7 @@ def meta_root_group_nxt(ldraw_node, child_node):
                 group.next_collection = None
 
 
-def meta_leocad_camera(child_node, matrix):
+def meta_leocad_camera(child_node, matrix) -> None:
     global cameras
     global camera
 
@@ -277,12 +284,9 @@ def meta_leocad_camera(child_node, matrix):
             # "NAME Camera  2".split("NAME ")[1] => "Camera  2"
             name_args = clean_line.split("NAME ")
             camera.name = name_args[1]
-
-            # By definition this is the last of the parameters
-            _params = []
-
             cameras.append(camera)
-            camera = None
+            # By definition this is the last of the parameters
+            break
         else:
             _params = _params[1:]
 

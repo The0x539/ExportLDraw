@@ -5,7 +5,6 @@ import struct
 from collections import namedtuple
 
 from . import helpers
-from . import Dummy
 
 BlendColor = namedtuple("BlendColor", "r g b")
 blend_colors = [
@@ -34,8 +33,8 @@ class LDrawColor:
     defaults["use_alt_colors"] = True
     use_alt_colors = defaults["use_alt_colors"]
 
-    __colors: dict[Dummy, Dummy] = {}
-    __bad_color = None
+    __colors: dict[str, LDrawColor] = {}
+    __bad_color: LDrawColor | None = None
 
     materials = ["chrome", "pearlescent", "rubber", "matte_metallic", "metal"]
 
@@ -88,13 +87,13 @@ class LDrawColor:
         self.material_maxsize = None
 
     @classmethod
-    def parse_color(cls, clean_line):
+    def parse_color(cls, clean_line: str) -> str:
         color = LDrawColor()
         color.parse_color_params(clean_line)
         cls.__colors[color.code] = color
         return color.code
 
-    def parse_color_params(self, clean_line):
+    def parse_color_params(self, clean_line: str) -> None:
         # name CODE x VALUE v EDGE e required
         # 0 !COLOUR Black CODE 0 VALUE #1B2A34 EDGE #2B4354
 
