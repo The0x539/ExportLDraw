@@ -7,7 +7,7 @@ import typing
 from .import_options import ImportOptions
 from .pe_texmap import PETexInfo, PETexmap
 from .texmap import TexMap
-from .geometry_data import FaceData
+from .geometry_data import FaceData, GeometryData
 from . import group
 from . import helpers
 from . import ldraw_camera
@@ -22,6 +22,9 @@ cameras: list[LDrawCamera] = []
 camera: LDrawCamera | None = None
 
 
+Winding = typing.Literal['CW', 'CCW']
+
+
 def reset_caches() -> None:
     global current_frame
     global current_step
@@ -34,7 +37,15 @@ def reset_caches() -> None:
     camera = None
 
 
-def meta_bfc(ldraw_node, child_node, matrix, local_cull, winding, invert_next, accum_invert):
+def meta_bfc(
+    ldraw_node: LDrawNode,
+    child_node: LDrawNode,
+    matrix: mathutils.Matrix,
+    local_cull: bool,
+    winding: Winding,
+    invert_next: bool,
+    accum_invert: bool,
+) -> tuple[bool, Winding, bool]:
     clean_line = child_node.line
     _params = clean_line.split()[2:]
 
@@ -140,7 +151,7 @@ def meta_step() -> None:
         group.current_step_group = step_collection
 
 
-def do_meta_step(obj):
+def do_meta_step(obj: bpy.types.Object) -> None:
     if ImportOptions.meta_step:
         helpers.hide_obj(obj)
         obj.keyframe_insert(data_path="hide_render", frame=ImportOptions.starting_step_frame)
@@ -151,13 +162,13 @@ def do_meta_step(obj):
         obj.keyframe_insert(data_path="hide_viewport", frame=current_frame)
 
 
-def meta_save():
+def meta_save() -> None:
     if ImportOptions.meta_save:
         if ImportOptions.set_timeline_markers:
             bpy.context.scene.timeline_markers.new("SAVE", frame=current_frame)
 
 
-def meta_clear():
+def meta_clear() -> None:
     if ImportOptions.meta_clear:
         if ImportOptions.set_timeline_markers:
             bpy.context.scene.timeline_markers.new("CLEAR", frame=current_frame)
@@ -168,12 +179,12 @@ def meta_clear():
                 obj.keyframe_insert(data_path="hide_viewport", frame=current_frame)
 
 
-def meta_print(child_node):
+def meta_print(child_node: LDrawNode) -> None:
     if ImportOptions.meta_print_write:
         print(child_node.meta_args["message"])
 
 
-def meta_group(child_node):
+def meta_group(child_node: LDrawNode) -> None:
     if ImportOptions.meta_group:
         if child_node.meta_command == "group_def":
             meta_group_def(child_node)
@@ -195,7 +206,8 @@ def meta_group_def(child_node: LDrawNode) -> None:
     group.get_collection(collection_name, host_collection)
 
 
-def meta_group_nxt(child_node):
+def meta_group_nxt(child_node: LDrawNode) -> None:
+    assert group.top_collection is not None
     group.stored_collection = group.next_collection
     collection = None
     if child_node.meta_args["id"] in group.collection_id_map:
@@ -206,7 +218,7 @@ def meta_group_nxt(child_node):
     group.end_next_collection = True
 
 
-def meta_group_begin(child_node) -> None:
+def meta_group_begin(child_node: LDrawNode) -> None:
     if group.next_collection is not None:
         group.next_collections.append(group.next_collection)
 
@@ -226,21 +238,21 @@ def meta_group_begin(child_node) -> None:
     #     group.link_child(collection, host_collection)
 
 
-def meta_group_end():
+def meta_group_end() -> None:
     if len(group.next_collections) > 0:
         group.next_collection = group.next_collections.pop()
     else:
         group.next_collection = None
 
 
-def meta_root_group_nxt(ldraw_node, child_node):
+def meta_root_group_nxt(ldraw_node: LDrawNode, child_node: LDrawNode) -> None:
     if ldraw_node.is_root and ImportOptions.meta_group:
         if child_node.meta_command != "group_nxt":
             if group.end_next_collection:
                 group.next_collection = None
 
 
-def meta_leocad_camera(child_node, matrix) -> None:
+def meta_leocad_camera(child_node: LDrawNode, matrix: mathutils.Matrix) -> None:
     global cameras
     global camera
 
@@ -298,7 +310,7 @@ def meta_leocad_camera(child_node, matrix) -> None:
 
 # https://www.ldraw.org/documentation/ldraw-org-file-format-standards/language-extension-for-texture-mapping.html
 
-def meta_texmap(ldraw_node, child_node, matrix):
+def meta_texmap(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathutils.Matrix) -> None:
     if not ImportOptions.meta_texmap:
         return
 
@@ -330,11 +342,11 @@ def meta_texmap(ldraw_node, child_node, matrix):
             if glossmap == "":
                 glossmap = None
 
-            new_texmap.parameters = [
+            new_texmap.parameters = (
                 matrix @ mathutils.Vector((x1, y1, z1)),
                 matrix @ mathutils.Vector((x2, y2, z2)),
                 matrix @ mathutils.Vector((x3, y3, z3)),
-            ]
+            )
             new_texmap.texture = texture
             new_texmap.glossmap = glossmap
         elif new_texmap.is_cylindrical():
@@ -348,12 +360,12 @@ def meta_texmap(ldraw_node, child_node, matrix):
             if glossmap == "":
                 glossmap = None
 
-            new_texmap.parameters = [
+            new_texmap.parameters = (
                 matrix @ mathutils.Vector((x1, y1, z1)),
                 matrix @ mathutils.Vector((x2, y2, z2)),
                 matrix @ mathutils.Vector((x3, y3, z3)),
                 a,
-            ]
+            )
             new_texmap.texture = texture
             new_texmap.glossmap = glossmap
         elif new_texmap.is_spherical():
@@ -367,13 +379,13 @@ def meta_texmap(ldraw_node, child_node, matrix):
             if glossmap == "":
                 glossmap = None
 
-            new_texmap.parameters = [
+            new_texmap.parameters = (
                 matrix @ mathutils.Vector((x1, y1, z1)),
                 matrix @ mathutils.Vector((x2, y2, z2)),
                 matrix @ mathutils.Vector((x3, y3, z3)),
                 a,
                 b,
-            ]
+            )
             new_texmap.texture = texture
             new_texmap.glossmap = glossmap
 
@@ -382,7 +394,7 @@ def meta_texmap(ldraw_node, child_node, matrix):
         ldraw_node.texmap = new_texmap
 
 
-def set_texmap_end(ldraw_node):
+def set_texmap_end(ldraw_node: LDrawNode) -> None:
     try:
         ldraw_node.texmap = ldraw_node.texmaps.pop()
     except IndexError as e:
@@ -396,7 +408,7 @@ def set_texmap_end(ldraw_node):
     ldraw_node.texmap_fallback = False
 
 
-def meta_pe_tex(ldraw_node, child_node, matrix):
+def meta_pe_tex(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathutils.Matrix) -> None:
     if child_node.meta_command == "pe_tex_info":
         meta_pe_tex_info(ldraw_node, child_node, matrix)
     elif child_node.meta_command == "pe_tex_next_shear":
@@ -418,7 +430,7 @@ def meta_pe_tex(ldraw_node, child_node, matrix):
 # >= 0 is the file at the nth subfile_line_index
 # second arg is the nth subfile_line_index of line of file at that line
 # PE_TEX_PATH 5 4 is self.line_type_1_list[5].line_type_1_list[4]
-def meta_pe_tex_path(ldraw_node, child_node):
+def meta_pe_tex_path(ldraw_node: LDrawNode, child_node: LDrawNode) -> None:
     clean_line = child_node.line
     _params = clean_line.split()[2:]
 
@@ -430,7 +442,7 @@ def meta_pe_tex_path(ldraw_node, child_node):
 # PE_TEX_INFO x,y,z,a,b,c,d,e,f,g,h,i,bl/tl,tr/br is matrix and plane coordinates for uv calculations
 # multiple PE_TEX_INFO have to be flattened into one
 # if no matrix, identity @ rotation?
-def meta_pe_tex_info(ldraw_node, child_node, matrix):
+def meta_pe_tex_info(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathutils.Matrix) -> None:
     if ldraw_node.current_pe_tex_path is None:
         return
 
@@ -564,7 +576,7 @@ def meta_pe_tex_info(ldraw_node, child_node, matrix):
     if ldraw_node.current_pe_tex_path == -1:
         ldraw_node.pe_tex_info = ldraw_node.pe_tex_infos[ldraw_node.current_pe_tex_path]
 
-def meta_edge(child_node, color_code, matrix, geometry_data):
+def meta_edge(child_node: LDrawNode, color_code, matrix, geometry_data):
     vertices = [matrix @ v for v in child_node.vertices]
 
     geometry_data.add_edge_data(
@@ -573,7 +585,14 @@ def meta_edge(child_node, color_code, matrix, geometry_data):
     )
 
 
-def meta_face(ldraw_node, child_node, color_code, matrix, geometry_data, winding):
+def meta_face(
+    ldraw_node: LDrawNode,
+    child_node: LDrawNode,
+    color_code: str,
+    matrix: mathutils.Matrix,
+    geometry_data: GeometryData,
+    winding: Winding | None,
+) -> None:
     vertices = FaceData.handle_vertex_winding(child_node, matrix, winding)
     pe_texmap = PETexmap.build_pe_texmap(ldraw_node, child_node)
 
@@ -585,7 +604,12 @@ def meta_face(ldraw_node, child_node, color_code, matrix, geometry_data, winding
     )
 
 
-def meta_line(child_node, color_code, matrix, geometry_data):
+def meta_line(
+    child_node: LDrawNode,
+    color_code: str,
+    matrix: mathutils.Matrix,
+    geometry_data: GeometryData,
+) -> None:
     vertices = [matrix @ v for v in child_node.vertices]
 
     geometry_data.add_line_data(

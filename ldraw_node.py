@@ -159,7 +159,7 @@ class LDrawNode:
                 geometry_data = GeometryData()
 
             local_cull = True
-            winding = "CCW"
+            winding: ldraw_meta.Winding = "CCW"
             invert_next = False
 
             subfile_line_index = 0
@@ -216,6 +216,7 @@ class LDrawNode:
                         if self.bfc_certified and accum_cull and local_cull:
                             _winding = winding
 
+                        assert geometry_data is not None
                         ldraw_meta.meta_face(
                             self,
                             child_node,
@@ -225,6 +226,7 @@ class LDrawNode:
                             _winding,
                         )
                     elif child_node.meta_command == "5":
+                        assert geometry_data is not None
                         ldraw_meta.meta_line(
                             child_node,
                             child_current_color,
