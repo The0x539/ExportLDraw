@@ -81,7 +81,8 @@ class PETexmap:
 
             p.init_with_target_part_matrix(ldraw_node.matrix)
 
-            vertices = [p.matrix_inverse @ v for v in child_node.vertices]
+            m = p.matrix_inverse or Matrix.Identity(4)
+            vertices = [m @ v for v in child_node.vertices]
 
             # # custom minifig head > 3626tex.dat (has no pe_tex) > 3626texpole.dat (has no uv data)
             if len(_params) == 15:  # use uvs provided in file

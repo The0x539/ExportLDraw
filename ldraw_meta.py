@@ -6,7 +6,7 @@ import typing
 
 from .import_options import ImportOptions
 from .pe_texmap import PETexInfo, PETexmap
-from .texmap import TexMap
+from .texmap import TexMap, TexMapMethod
 from .geometry_data import FaceData, GeometryData
 from . import group
 from . import helpers
@@ -330,7 +330,7 @@ def meta_texmap(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathutils.
 
         method = clean_line.split()[3]
 
-        new_texmap = TexMap(method=method)
+        new_texmap = TexMap(method=typing.cast(TexMapMethod, method))
         if new_texmap.is_planar():
             _params = clean_line.split(maxsplit=13)  # planar
 
@@ -557,6 +557,8 @@ def meta_pe_tex_info(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathu
 
     if base64_str is None:
         return
+
+    assert ldraw_node.file is not None
 
     from . import base64_handler
     image = base64_handler.named_png_from_base64_str(f"{ldraw_node.file.name}_{ldraw_node.current_pe_tex_path}.png", base64_str)

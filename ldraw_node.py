@@ -1,7 +1,13 @@
 import uuid
+import typing
+
+from mathutils import Vector, Matrix
 
 from .geometry_data import GeometryData
 from .import_options import ImportOptions
+from .ldraw_file import LDrawFile
+from .pe_texmap import PETexInfo
+from .texmap import TexMap
 from . import group
 from . import ldraw_mesh
 from . import ldraw_object
@@ -22,33 +28,33 @@ class LDrawNode:
     geometry_datas: dict[str, GeometryData] = {}
 
     @classmethod
-    def reset_caches(cls):
+    def reset_caches(cls) -> None:
         cls.part_count = 0
         cls.key_map.clear()
         cls.geometry_datas.clear()
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.is_root = False
-        self.file = None
+        self.file: LDrawFile | None = None
         self.line = ""
         self.color_code = "16"
         self.matrix = matrices.identity_matrix
-        self.vertices = []
-        self.bfc_certified = None
-        self.meta_command = None
-        self.meta_args = {}
+        self.vertices: list[Vector] = []
+        self.bfc_certified: bool | None = None
+        self.meta_command: str | None = None
+        self.meta_args: dict[str, typing.Any] = {}
 
         self.texmap_start = False
         self.texmap_next = False
         self.texmap_fallback = False
-        self.texmaps = []
-        self.texmap = None
+        self.texmaps: list[TexMap] = []
+        self.texmap: TexMap | None = None
 
-        self.current_pe_tex_path = None
-        self.current_subfile_pe_tex_path = None
-        self.pe_tex_infos = {}
-        self.subfile_pe_tex_infos = {}
-        self.pe_tex_info = []
+        self.current_pe_tex_path: int | None = None
+        self.current_subfile_pe_tex_path: int | None = None
+        self.pe_tex_infos: dict[int, list[PETexInfo]] = {}
+        self.subfile_pe_tex_infos: dict[int, dict[int, list[PETexInfo]]] = {}
+        self.pe_tex_info: list[PETexInfo] = []
 
     def load(self,
              color_code="16",
@@ -59,8 +65,8 @@ class LDrawNode:
              accum_invert=False,
              parent_collection=None,
              return_mesh=False,
-             ) -> None:
-
+     ) -> None:
+        assert self.file is not None
         if self.file.is_edge_logo() and not ImportOptions.display_logo:
             return
         if self.file.is_stud() and ImportOptions.no_studs:
@@ -164,6 +170,7 @@ class LDrawNode:
 
             subfile_line_index = 0
             for child_node in self.file.child_nodes:
+                assert child_node.meta_command is not None
                 # self.texmap_fallback will only be true if ImportOptions.meta_texmap == True and you're on a fallback line
                 # if ImportOptions.meta_texmap == False, it will always be False
                 if child_node.meta_command in ["1", "2", "3", "4", "5"] and not self.texmap_fallback:
@@ -311,7 +318,7 @@ class LDrawNode:
     # set the working color code to this file's
     # color code if it isn't color code 16
     @staticmethod
-    def __determine_color(parent_color_code, this_color_code):
+    def __determine_color(parent_color_code: str, this_color_code: str) -> str:
         color_code = this_color_code
         if this_color_code == "16":
             color_code = parent_color_code
@@ -320,7 +327,12 @@ class LDrawNode:
     # must include matrix, so that parts that are just mirrored versions of other parts
     # such as 32527.dat (mirror of 32528.dat) will render
     @staticmethod
-    def __build_key(filename, color_code=None, pe_tex_info=None, matrix=None) -> str:
+    def __build_key(
+        filename: str,
+        color_code: str | None = None,
+        pe_tex_info: list[PETexInfo] | None = None,
+        matrix: Matrix | None = None,
+    ) -> str:
         _key: tuple = (filename, color_code,)
 
         if pe_tex_info is not None:
