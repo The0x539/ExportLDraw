@@ -109,8 +109,8 @@ class FileSystem:
     def resolution_value():
         return FileSystem.resolution_choices[FileSystem.resolution][0]
 
-    search_dirs = []
-    lowercase_paths = {}
+    search_dirs: list[str] = []
+    lowercase_paths: dict[str, str] = {}
 
     @classmethod
     def reset_caches(cls):

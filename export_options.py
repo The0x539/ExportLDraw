@@ -1,5 +1,5 @@
 class ExportOptions:
-    defaults = {}
+    defaults: dict[str, bool | int | float | str] = {}
 
     defaults["remove_doubles"] = False
     remove_doubles = defaults["remove_doubles"]

@@ -6,13 +6,7 @@ import json
 from pathlib import Path
 import os
 
-try:
-    from .definitions import APP_ROOT
-except ImportError as e:
-    print(e)
-    import traceback
-    print(traceback.format_exc())
-    from definitions import APP_ROOT
+from .definitions import APP_ROOT
 
 
 # remove multiple spaces

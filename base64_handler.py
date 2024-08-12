@@ -4,13 +4,7 @@ from pathlib import Path
 import struct
 import base64
 
-try:
-    from .definitions import APP_ROOT
-except ImportError as e:
-    print(e)
-    import traceback
-    print(traceback.format_exc())
-    from definitions import APP_ROOT
+from .definitions import APP_ROOT
 
 
 # http://coreygoldberg.blogspot.com/2013/01/python-verify-png-file-and-get-image.html

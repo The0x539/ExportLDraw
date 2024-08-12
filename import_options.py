@@ -1,6 +1,6 @@
 # TODO: remove class
 class ImportOptions:
-    defaults = {}
+    defaults: dict[str, bool | int | float | str] = {}
 
     defaults["remove_doubles"] = True
     remove_doubles = defaults["remove_doubles"]
@@ -61,7 +61,7 @@ class ImportOptions:
     make_gaps = defaults["make_gaps"]
 
     defaults["gap_scale"] = 0.997
-    gap_scale = defaults["gap_scale"]
+    gap_scale: float = defaults["gap_scale"] # type: ignore[assignment]
 
     defaults["no_studs"] = False
     no_studs = defaults["no_studs"]
@@ -110,7 +110,7 @@ class ImportOptions:
     use_freestyle_edges = defaults["use_freestyle_edges"]
 
     defaults["import_scale"] = 0.02
-    import_scale = defaults["import_scale"]
+    import_scale: float = defaults["import_scale"] # type: ignore[assignment]
 
     defaults["parent_to_empty"] = False  # True False
     parent_to_empty = defaults["parent_to_empty"]

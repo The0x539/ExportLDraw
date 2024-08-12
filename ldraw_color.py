@@ -4,13 +4,7 @@ import math
 import struct
 from collections import namedtuple
 
-try:
-    from . import helpers
-except ImportError as e:
-    print(e)
-    import traceback
-    print(traceback.format_exc())
-    import helpers
+from . import helpers
 
 BlendColor = namedtuple("BlendColor", "r g b")
 blend_colors = [
