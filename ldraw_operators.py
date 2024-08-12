@@ -8,6 +8,7 @@ from .definitions import APP_ROOT
 from .import_options import ImportOptions
 from . import matrices
 from . import blender_import
+from . import ldraw_props
 
 Status = typing.Literal[
     "RUNNING_MODAL", "CANCELLED", "FINISHED", "PASS_THROUGH", "INTERFACE"
@@ -31,10 +32,12 @@ class VertPrecisionOperator(bpy.types.Operator):
     # bpy.context.object.active_material = bpy.data.materials[0]
     def main(self, context: Context) -> None:
         for obj in context.selected_objects:
+            obj = typing.cast(ldraw_props.Object, obj)
             if obj.type != 'MESH':
                 continue
 
             mesh = obj.data
+            assert isinstance(mesh, bpy.types.Mesh)
             precision = obj.ldraw_props.export_precision
 
             for vertex in mesh.vertices:
@@ -270,7 +273,7 @@ class RigMinifigOperator(bpy.types.Operator):
 
         return {'FINISHED'}
 
-    def set_bone_layer(self, bone: Object, layer: int) -> None:
+    def set_bone_layer(self, bone: typing.Any, layer: int) -> None:
         for x in range(0, 32):
             if x == layer:
                 bone.layers[x] = True
@@ -339,7 +342,7 @@ class RigMinifigOperator(bpy.types.Operator):
             rock_bones_layer = 3
             # for bone in arm_obj.data.edit_bones:
             for bone_name in ['torso_rock', 'body_rock', 'body_rock.l', 'body_rock.r', 'body_rock.fr', 'body_rock.bk']:
-                bone = arm_obj.data.edit_bones[bone_name]
+                bone: object = arm_obj.data.edit_bones[bone_name]
                 # do it twice or else they aren't moved from 0
                 self.set_bone_layer(bone, rock_bones_layer)
                 self.set_bone_layer(bone, rock_bones_layer)
