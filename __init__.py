@@ -16,8 +16,6 @@ from . import operator_export
 from . import operator_panel_ldraw
 from . import ldraw_operators
 
-class Dummy:
-    pass
 
 def register():
     ldraw_props.register()

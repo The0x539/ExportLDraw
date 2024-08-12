@@ -2,7 +2,6 @@ import bpy
 import os
 from . import helpers
 from .import_options import ImportOptions
-from . import Dummy
 
 from bpy.types import Collection
 

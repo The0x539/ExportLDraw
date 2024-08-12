@@ -1,5 +1,7 @@
 """Parses and stores a table of color / material definitions. Converts color space."""
 
+from __future__ import annotations
+
 import math
 import struct
 from collections import namedtuple

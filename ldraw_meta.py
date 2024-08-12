@@ -1,15 +1,20 @@
+from __future__ import annotations
+
 import bpy
 import mathutils
+import typing
 
 from .import_options import ImportOptions
 from .pe_texmap import PETexInfo, PETexmap
 from .texmap import TexMap
 from .geometry_data import FaceData
-from .ldraw_node import LDrawNode
-from .ldraw_camera import LDrawCamera
 from . import group
 from . import helpers
 from . import ldraw_camera
+
+if typing.TYPE_CHECKING:
+    from .ldraw_node import LDrawNode
+    from .ldraw_camera import LDrawCamera
 
 current_frame = 0
 current_step = 0

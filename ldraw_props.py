@@ -3,6 +3,8 @@ import bpy
 from .import_options import ImportOptions
 from .export_options import ExportOptions
 
+class Object:
+    ...
 
 def set_props(obj, ldraw_file, color_code):
     obj.ldraw_props.filename = ldraw_file.filename or ""
