@@ -1,8 +1,24 @@
-import mathutils
+from __future__ import annotations
 
+import typing
+
+from mathutils import Vector, Matrix
+from bmesh.types import BMesh, BMFace
+
+if typing.TYPE_CHECKING:
+    from .ldraw_node import LDrawNode
 
 class PETexInfo:
-    def __init__(self, point_min=None, point_max=None, point_diff=None, box_extents=None, matrix=None, matrix_inverse=None, image=None):
+    def __init__(
+        self,
+        point_min: Vector | None = None,
+        point_max: Vector | None = None,
+        point_diff: Vector | None = None,
+        box_extents: Vector | None = None,
+        matrix: Matrix | None = None,
+        matrix_inverse: Matrix | None = None,
+        image: None = None,
+    ) -> None:
         self.point_min = point_min  # bottom corner of bounding box
         self.point_max = point_max  # top corner of bounding box
         self.point_diff = point_diff  # center of bounding box
@@ -11,13 +27,13 @@ class PETexInfo:
         self.matrix_inverse = matrix_inverse
         self.image = image
 
-    def init_with_target_part_matrix(self, target_part_matrix):
-        self.matrix = self.matrix or mathutils.Matrix.Identity(4)
+    def init_with_target_part_matrix(self, target_part_matrix: Matrix) -> None:
+        self.matrix = self.matrix or Matrix.Identity(4)
         (translation, rotation, scale) = (target_part_matrix @ self.matrix).decompose()
 
         self.box_extents = scale * 0.5
 
-        mirroring = mathutils.Vector((1, 1, 1))
+        mirroring = Vector((1, 1, 1))
         if scale.x < 0:
             mirroring.x = -1
             self.box_extents.x = -self.box_extents.x
@@ -28,16 +44,16 @@ class PETexInfo:
             mirroring.z = -1
             self.box_extents.z = -self.box_extents.z
 
-        rhs = mathutils.Matrix.LocRotScale(translation, rotation, mirroring)
+        rhs = Matrix.LocRotScale(translation, rotation, mirroring)
         self.matrix = (target_part_matrix.inverted() @ rhs).freeze()
         self.matrix_inverse = self.matrix.inverted().freeze()
 
 class PETexmap:
-    def __init__(self):
+    def __init__(self) -> None:
         self.texture = None
-        self.uvs = []
+        self.uvs: list[Vector] = []
 
-    def uv_unwrap_face(self, bm, face):
+    def uv_unwrap_face(self, bm: BMesh, face: BMFace) -> None:
         if not self.uvs:
             return
 
@@ -50,14 +66,14 @@ class PETexmap:
             loop[uv_layer].uv = uvs[p]
 
     @staticmethod
-    def build_pe_texmap(ldraw_node, child_node):
+    def build_pe_texmap(ldraw_node: LDrawNode, child_node: LDrawNode) -> PETexmap | None:
         # child_node is a 3 or 4 line
         _params = child_node.line.split()[2:]
 
         pe_texmap = None
         for p in ldraw_node.pe_tex_info:
-            point_min = p.point_min or mathutils.Vector((0, 0))
-            point_max = p.point_max or mathutils.Vector((1, 1))
+            point_min = p.point_min or Vector((0, 0))
+            point_max = p.point_max or Vector((1, 1))
             point_diff = p.point_diff or point_max - point_min
 
             pe_texmap = PETexmap()
@@ -73,7 +89,7 @@ class PETexmap:
                 for i in range(len(vertices)):
                     x = round(float(uv_params[i * 2]), 3)
                     y = round(float(uv_params[i * 2 + 1]), 3)
-                    uv = mathutils.Vector((x, y))
+                    uv = Vector((x, y))
                     pe_texmap.uvs.append(uv)
 
             else:
@@ -83,7 +99,7 @@ class PETexmap:
                 bc = vertices[2] - vertices[1]
                 face_normal = ab.cross(bc).normalized()
 
-                texture_normal = mathutils.Vector((0.0, -1, 0.0))
+                texture_normal = Vector((0.0, -1, 0.0))
                 if abs(face_normal.dot(texture_normal)) < 0.001:
                     continue
 
@@ -91,7 +107,7 @@ class PETexmap:
                     # if face is within p.boundingbox
                     # is_intersecting = (p.matrix @ p.bounding_box).interects(vert)
 
-                    uv = mathutils.Vector((0, 0))
+                    uv = Vector((0, 0))
                     uv.x = (vert.x - point_min.x) / point_diff.x
                     uv.y = (vert.z - point_min.y) / point_diff.y
 

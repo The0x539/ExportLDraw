@@ -1,7 +1,11 @@
 import mathutils
 
+from bmesh.types import BMesh, BMFace
+from mathutils import Vector
+
 import math
 import uuid
+from typing import Literal
 
 from . import helpers
 
@@ -15,29 +19,34 @@ def is_texmap_line(line: str) -> bool:
 def clean_line(line: str) -> str:
     return line.replace(texmap_prefix, "")
 
+TexMapMethod = Literal['PLANAR', 'CYLINDRICAL', 'SPHERICAL']
 
 # https://github.com/trevorsandy/lpub3d/blob/e7c39cd3df518cf16521dc2c057a9f125cc3b5c3/lclib/common/lc_meshloader.h#L56
 # https://github.com/trevorsandy/lpub3d/blob/e7c39cd3df518cf16521dc2c057a9f125cc3b5c3/lclib/common/lc_meshloader.cpp#L12
 # https://github.com/trevorsandy/lpub3d/blob/e7c39cd3df518cf16521dc2c057a9f125cc3b5c3/lclib/common/lc_meshloader.cpp#L1486
 # https://stackoverflow.com/questions/53970131/how-to-find-the-clockwise-angle-between-two-vectors-in-python#53970746
 class TexMap:
-    def __init__(self, method=None):
+    def __init__(self, method: TexMapMethod | None = None) -> None:
         self.id = str(uuid.uuid4())
         self.method = method
-        self.parameters = None
+        self.parameters: \
+            tuple[Vector, Vector, Vector] \
+            | tuple[Vector, Vector, Vector, float] \
+            | tuple[Vector, Vector, Vector, float, float] \
+            | None = None
         self.texture = None
         self.glossmap = None
 
-    def is_planar(self):
+    def is_planar(self) -> bool:
         return self.method == 'PLANAR'
 
-    def is_cylindrical(self):
+    def is_cylindrical(self) -> bool:
         return self.method == 'CYLINDRICAL'
 
-    def is_spherical(self):
+    def is_spherical(self) -> bool:
         return self.method == 'SPHERICAL'
 
-    def uv_unwrap_face(self, bm, face):
+    def uv_unwrap_face(self, bm: BMesh, face: BMFace) -> None:
         if self.is_planar():
             self.__map_planar(bm, face)
         elif self.is_cylindrical():
@@ -45,7 +54,7 @@ class TexMap:
         elif self.is_spherical():
             self.__map_spherical(bm, face)
 
-    def uv_unwrap_face_basic(self, bm, face):
+    def uv_unwrap_face_basic(self, bm: BMesh, face: BMFace) -> None:
         uv_layer = bm.loops.layers.uv.verify()
         uvs = {}
         for i, loop in enumerate(face.loops):
@@ -56,7 +65,8 @@ class TexMap:
             loop[uv_layer].uv = uvs[p]
 
     # negative v because blender uv starts at bottom left of image, LDraw orientation of up=-y so use top left
-    def __map_planar(self, bm, face):
+    def __map_planar(self, bm: BMesh, face: BMFace) -> None:
+        assert self.parameters is not None
         a = self.parameters[0]
         b = self.parameters[1]
         c = self.parameters[2]
@@ -97,7 +107,9 @@ class TexMap:
                 uvs[p] = uv
             loop[uv_layer].uv = uvs[p]
 
-    def __map_cylindrical(self, bm, face):
+    def __map_cylindrical(self, bm: BMesh, face: BMFace) -> None:
+        assert self.parameters is not None
+        assert len(self.parameters) == 4
         a = self.parameters[0]
         b = self.parameters[1]
         c = self.parameters[2]
@@ -108,10 +120,10 @@ class TexMap:
         front = (c - b).normalized()
         plane_1_normal = up / up_length
         plane_2_normal = front.cross(up).normalized()
-        front_plane = mathutils.Vector(tuple(front) + (-front.dot(b),))
+        front_plane = mathutils.Vector(front.to_tuple() + (-front.dot(b),))
         up_length = up_length
-        plane_1 = mathutils.Vector(tuple(plane_1_normal) + (-plane_1_normal.dot(b),))
-        plane_2 = mathutils.Vector(tuple(plane_2_normal) + (-plane_2_normal.dot(b),))
+        plane_1 = mathutils.Vector(plane_1_normal.to_tuple() + (-plane_1_normal.dot(b),))
+        plane_2 = mathutils.Vector(plane_2_normal.to_tuple() + (-plane_2_normal.dot(b),))
         angle_1 = 360.0 / angle1
 
         uv_layer = bm.loops.layers.uv.verify()
@@ -123,7 +135,7 @@ class TexMap:
                 dot_plane_1 = mathutils.Vector((p[0], p[1] - up_length, p[2],) + (1.0,)).dot(plane_1)
                 point_in_plane_1 = p - mathutils.Vector((plane_1[0], plane_1[1], plane_1[2],)) * dot_plane_1
                 dot_front_plane = point_in_plane_1.dot(front_plane)
-                dot_plane_2 = mathutils.Vector(tuple(point_in_plane_1) + (1.0,)).dot(plane_2)
+                dot_plane_2 = mathutils.Vector(point_in_plane_1.to_tuple() + (1.0,)).dot(plane_2)
 
                 _angle_1 = math.atan2(dot_plane_2, dot_front_plane) / math.pi * angle_1
                 du = helpers.clamp(0.5 + 0.5 * _angle_1, 0, 1)
@@ -132,7 +144,9 @@ class TexMap:
                 uvs[p] = uv
             loop[uv_layer].uv = uvs[p]
 
-    def __map_spherical(self, bm, face):
+    def __map_spherical(self, bm: BMesh, face: BMFace) -> None:
+        assert self.parameters is not None
+        assert len(self.parameters) == 5
         a = self.parameters[0]
         b = self.parameters[1]
         c = self.parameters[2]
@@ -142,10 +156,10 @@ class TexMap:
         front = (b - a).normalized()
         plane_1_normal = front.cross(c - a).normalized()
         plane_2_normal = plane_1_normal.cross(front).normalized()
-        front_plane = mathutils.Vector(tuple(front) + (-front.dot(a),))
+        front_plane = mathutils.Vector(front.to_tuple() + (-front.dot(a),))
         center = a
-        plane_1 = mathutils.Vector(tuple(plane_1_normal) + (-plane_1_normal.dot(a),))
-        plane_2 = mathutils.Vector(tuple(plane_2_normal) + (-plane_2_normal.dot(a),))
+        plane_1 = mathutils.Vector(plane_1_normal.to_tuple() + (-plane_1_normal.dot(a),))
+        plane_2 = mathutils.Vector(plane_2_normal.to_tuple() + (-plane_2_normal.dot(a),))
         angle_1 = 360.0 / angle1
         angle_2 = 180.0 / angle2
 
