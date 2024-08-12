@@ -2,7 +2,7 @@ import bpy
 import os
 from . import helpers
 from .import_options import ImportOptions
-
+from . import Dummy
 
 top_collection = None
 current_file_collection = None
@@ -10,12 +10,12 @@ parts_collection = None
 files_collection = None
 groups_collection = None
 ungrouped_collection = None
-next_collections = []
+next_collections: list[Dummy] = []
 stored_collection = None
 next_collection = None
 end_next_collection = False
 current_step_group = None
-collection_id_map = {}
+collection_id_map: dict[Dummy, Dummy] = {}
 
 
 def reset_caches():

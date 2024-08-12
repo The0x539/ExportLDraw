@@ -5,6 +5,7 @@ import struct
 from collections import namedtuple
 
 from . import helpers
+from . import Dummy
 
 BlendColor = namedtuple("BlendColor", "r g b")
 blend_colors = [
@@ -33,7 +34,7 @@ class LDrawColor:
     defaults["use_alt_colors"] = True
     use_alt_colors = defaults["use_alt_colors"]
 
-    __colors = {}
+    __colors: dict[Dummy, Dummy] = {}
     __bad_color = None
 
     materials = ["chrome", "pearlescent", "rubber", "matte_metallic", "metal"]

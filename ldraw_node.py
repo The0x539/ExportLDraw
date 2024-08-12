@@ -7,6 +7,7 @@ from . import ldraw_mesh
 from . import ldraw_object
 from . import ldraw_meta
 from . import matrices
+from . import Dummy
 
 
 class LDrawNode:
@@ -18,8 +19,8 @@ class LDrawNode:
     current_filename = ""
     current_model_filename = ""
 
-    key_map = {}
-    geometry_datas = {}
+    key_map: dict[Dummy, Dummy] = {}
+    geometry_datas: dict[Dummy, Dummy] = {}
 
     @classmethod
     def reset_caches(cls):

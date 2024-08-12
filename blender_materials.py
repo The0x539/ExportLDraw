@@ -7,10 +7,11 @@ from .definitions import APP_ROOT
 from .ldraw_color import LDrawColor
 from .filesystem import FileSystem
 from . import strings
+from . import Dummy
 
 
 class BlenderMaterials:
-    __key_map = {}
+    __key_map: dict[Dummy, Dummy] = {}
 
     @classmethod
     def reset_caches(cls):

@@ -8,11 +8,11 @@ from .geometry_data import FaceData
 from . import group
 from . import helpers
 from . import ldraw_camera
-
+from . import Dummy
 
 current_frame = 0
 current_step = 0
-cameras = []
+cameras: list[Dummy] = []
 camera = None
 
 

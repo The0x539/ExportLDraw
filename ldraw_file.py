@@ -12,6 +12,7 @@ from . import base64_handler
 from . import helpers
 from . import ldraw_part_types
 from . import texmap
+from . import Dummy
 
 
 class LDrawFile:
@@ -19,8 +20,8 @@ class LDrawFile:
     A file that has been loaded and its lines converted to header data and ldraw_nodes.
     """
 
-    __unparsed_file_cache = {}
-    __parsed_file_cache = {}
+    __unparsed_file_cache: dict[Dummy, Dummy] = {}
+    __parsed_file_cache: dict[Dummy, Dummy] = {}
 
     @classmethod
     def reset_caches(cls):
