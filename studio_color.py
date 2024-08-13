@@ -25,6 +25,9 @@ from bpy.types import (
     ShaderNodeBsdfPrincipled,
     ShaderNodeBsdfAnisotropic,
     ShaderNodeTexImage,
+    ShaderNodeMix,
+    ShaderNodeMixRGB,
+    ShaderNodeBump,
     NodeSocketVector,
     NodeSocketFloat,
     NodeSocketColor,
@@ -290,6 +293,24 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         node.inputs[1].name = 'Shader1'
         node.inputs[2].name = 'Shader2'
 
+    elif isinstance(node, ShaderNodeMix):
+        if blend_type := elem.get('type'):
+            node.blend_type = cast(Any, blend_type.upper())
+        if use_clamp := elem.get('use_clamp'):
+            node.clamp_factor = node.clamp_result = bool(use_clamp)
+
+    elif isinstance(node, ShaderNodeMixRGB):
+        if blend_type := elem.get('type'):
+            node.blend_type = cast(Any, blend_type.upper())
+        if use_clamp := elem.get('use_clamp'):
+            node.use_clamp = bool(use_clamp)
+
+    elif isinstance(node, ShaderNodeBump):
+        if enable := elem.get('enable'):
+            node.mute = not bool(enable)
+        if invert := elem.get('invert'):
+            node.invert = bool(invert)
+
     elif isinstance(node, ShaderNodeValue):
         value_output = node.outputs['Value']
         assert isinstance(value_output, NodeSocketFloat)
@@ -366,6 +387,11 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         if filename := elem.get('filename'):
             image_path = os.path.join(dir, filename)
             node.image = bpy.data.images.load(image_path, check_existing=True)
+        else:
+            img = bpy.data.images.new('blank', 1, 1, alpha=True)
+            img.pixels = (0.0, 0.0, 0.0, 0.0)
+            img.update()
+            node.image = img
 
     else:
         # print the element if there are any element-specific attributes we should care about missing
