@@ -86,6 +86,7 @@ class LDrawFile:
         if filename == alt_filename and ldraw_file is None:
             ldraw_file = LDrawFile.get_file(standard_filename)
 
+        studio_color.load_xml("C:/Program Files/Studio 2.0 EarlyAccess/PhotoRealisticRenderer/win/64/settings.xml")
         studio_color.load_xml("C:/Program Files/Studio 2.0 EarlyAccess/data/CustomColors/CustomColorSettings.xml")
 
         # import all materials

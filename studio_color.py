@@ -16,18 +16,60 @@ from bpy.types import (
     ShaderNodeVectorTransform,
     ShaderNodeGroup,
     ShaderNodeTree,
+    ShaderNodeBevel,
+    ShaderNodeBump,
+    ShaderNodeTexNoise,
+    ShaderNodeMath,
+    ShaderNodeMapping,
+    ShaderNodeVectorMath,
+    ShaderNodeBsdfDiffuse,
+    ShaderNodeMix,
+    ShaderNodeNormalMap,
+    ShaderNodeBrightContrast,
+    ShaderNodeBsdfTransparent,
+    ShaderNodeBsdfAnisotropic,
+    ShaderNodeRGBCurve,
+    ShaderNodeTexVoronoi,
+    ShaderNodeVolumeAbsorption,
+    ShaderNodeLayerWeight,
     NodeSocketVector,
     NodeSocketFloat,
     NodeSocketColor,
     NodeSocketFloatFactor,
+    NodeGroupInput,
+    NodeGroupOutput,
     Node,
+    NodeSocket,
+    NodeTree,
+)
+
+# TODO: get rid of this and just do it for all nodes
+ConfigurableShaderNode = (
+    ShaderNodeBsdfTranslucent
+    | ShaderNodeBsdfPrincipled
+    | ShaderNodeEmission
+    | ShaderNodeBump
+    | ShaderNodeBevel
+    | ShaderNodeTexNoise
+    | ShaderNodeMath
+    | ShaderNodeMix
+    | ShaderNodeNormalMap
+    | ShaderNodeBrightContrast
+    | ShaderNodeBsdfTransparent
+    | ShaderNodeBsdfAnisotropic
+    | ShaderNodeRGBCurve
+    | ShaderNodeTexVoronoi
+    | ShaderNodeVolumeAbsorption
+    | ShaderNodeLayerWeight
 )
 
 blender4_renames = {
     'Subsurface': 'Subsurface Weight',
     'Clearcoat': 'Coat Weight',
     'ClearcoatRoughness': 'Coat Roughness',
+    'Clearcoat Roughness': 'Coat Roughness',
     'ClearcoatNormal': 'Coat Normal',
+    'Clearcoat Normal': 'Coat Normal',
     'Transmission': 'Transmission Weight',
     'Sheen': 'Sheen Weight',
     'SheenTint': 'Sheen Tint',
@@ -38,8 +80,10 @@ blender4_renames = {
 
     # Not sure these are accurate.
     'TransmissionRoughness': 'Roughness',
+    'Transmission Roughness': 'Roughness',
     'SubsurfaceColor': 'Base Color',
     'BaseColor': 'Base Color',
+    'Color': 'Base Color',
 }
 
 node_types = {
@@ -54,6 +98,32 @@ node_types = {
     'texture_coordinate': 'ShaderNodeTexCoord',
     'vector': 'ShaderNodeRGB',
     'vector_transform': 'ShaderNodeVectorTransform',
+    'group_input': 'NodeGroupInput',
+    'group_output': 'NodeGroupOutput',
+    'bump': 'ShaderNodeBump',
+    'noise_texture': 'ShaderNodeTexNoise',
+    'rounding_edge_normal': 'ShaderNodeBevel',
+    'switch_closure': 'ShaderNodeMixShader', # I am at wit's end
+    'math': 'ShaderNodeMath',
+    'mapping': 'ShaderNodeMapping',
+    'rgb_ramp': 'ShaderNodeValToRGB',
+    'project_to_axis_plane': 'ShaderNodeVectorMath', # I have no idea what this node was supposed to do.
+    'object_info': 'ShaderNodeObjectInfo',
+    'image_texture': 'ShaderNodeTexImage',
+    'diffuse_bsdf': 'ShaderNodeBsdfDiffuse',
+    'mix_value': 'ShaderNodeMix',
+    'switch_float': 'ShaderNodeMix', # aaaaaaaaaaaaaaaaaaaa
+    'normal_map': 'ShaderNodeNormalMap',
+    'vector_math': 'ShaderNodeVectorMath',
+    'brightness_contrast': 'ShaderNodeBrightContrast',
+    'uvmap': 'ShaderNodeUVMap',
+    'transparent_bsdf': 'ShaderNodeBsdfTransparent',
+    'glossy_bsdf': 'ShaderNodeBsdfAnisotropic', # unsure
+    'rgb_curves': 'ShaderNodeRGBCurve',
+    'voronoi_texture': 'ShaderNodeTexVoronoi',
+    'geometry': 'ShaderNodeNewGeometry',
+    'absorption_volume': 'ShaderNodeVolumeAbsorption',
+    'layer_weight': 'ShaderNodeLayerWeight',
 }
 
 socket_types = {
@@ -63,26 +133,88 @@ socket_types = {
     'float': 'NodeSocketFloat',
 }
 
+def get_input(node: Node, key: str) -> NodeSocket:
+    i = node.inputs.find(key)
+    if i >= 0:
+        return node.inputs[i]
+
+    if key in blender4_renames:
+        key = blender4_renames[key]
+
+    if key == 'Size' and isinstance(node, ShaderNodeBevel):
+        key = 'Radius'
+
+    i = node.inputs.find(key)
+    if i >= 0:
+        return node.inputs[i]
+    
+    desperation: dict[str, Any] = {
+        'ValueEnable': 0,
+        'ValueDisable': 1,
+        'Value1': 0,
+        'Value2': 1,
+        'Vector1': 0,
+        'Vector2': 1,
+        'Value': 0,
+        'Fac': 0,
+    }
+
+    if key in desperation and desperation[key] < len(node.inputs):
+        return node.inputs[desperation[key]]
+    else:
+        print('could not find input', key)
+        print('in', ', '.join(node.inputs.keys()))
+        print('for', node)
+        raise KeyError(key)
+
+def get_output(node: Node, key: str) -> NodeSocket:
+    i = node.outputs.find(key)
+    if i >= 0:
+        return node.outputs[i]
+
+    if key in blender4_renames:
+        key = blender4_renames[key]
+
+    i = node.outputs.find(key)
+    if i >= 0:
+        return node.outputs[i]
+    
+    desperation: dict[str, Any] = {
+        'Value': 0,
+        'ValueOut': 0,
+    }
+
+    if key in desperation and desperation[key] < len(node.outputs):
+        return node.outputs[desperation[key]]
+    else:
+        print('could not find output', key)
+        print('in', ', '.join(node.outputs.keys()))
+        print('for', node)
+        raise KeyError(key)
+
 def load_xml(filepath: str) -> None:
     tree = ET.parse(filepath)
     process_xml(tree.getroot())
 
 def process_xml(root: ET.Element) -> None:
-    for material in root:
-        if material.tag != 'material':
-            continue
+    for thing in root:
+        if thing.tag == 'material':
+            assert len(thing) == 1
+            shader = thing[0]
+            assert shader.tag == 'shader'
+            process_material(thing.attrib, shader)
 
-        for shader in material:
-            if shader.tag != 'shader':
-                continue
-
-            process_material(material.attrib, shader)
-            break
+        elif thing.tag == 'group':
+            assert len(thing) == 1
+            shader = thing[0]
+            assert shader.tag == 'shader'
+            process_group(thing.attrib, shader)
 
 def extract_vector(elem: ET.Element) -> tuple:
     value = elem.get('value')
     if value is None:
         raise KeyError('value')
+    value = value.replace(', ', ' ') # I have no words
     return tuple(float(x) for x in value.split())
 
 def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Element]) -> None:
@@ -94,27 +226,84 @@ def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Elemen
     assert group is not None
     group.nodes.clear()
 
-    # input = group.nodes.new('NodeGroupInput')
-    # input.name = 'Input'
     output = group.nodes.new('ShaderNodeOutputMaterial')
     output.name = 'Output'
 
     for elem in shader:
         process_node(group, elem)
 
+def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element]) -> None:
+    group_name = group_attrib['name']
+    if group_name in (
+        'UVGroup',
+        'UVGroup2',
+        'CHROME-ANTIQUE-GROUP',
+        'UVTwoColorGroup',
+        'UVTwoInputDegradationGroup',
+    ):
+        # TODO: figure out what a <uv_degradation /> is
+        # and a <mix />
+        return
+    
+    group = bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree'))
+    assert isinstance(group, ShaderNodeTree)
+
+    for elem in nodes:
+        process_node(group, elem)
+
 def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
     if elem.tag == 'connect':
         from_node = group.nodes[elem.attrib['from_node']]
         from_socket_name = elem.attrib['from_socket']
-        if from_socket_name in blender4_renames:
-            from_socket_name = blender4_renames[from_socket_name]
-        from_socket = from_node.outputs[from_socket_name]
-
+        from_socket = None
+        try:
+            from_socket = get_output(from_node, from_socket_name)
+        except KeyError:
+            pass
+        
         to_node = group.nodes[elem.attrib['to_node']]
         to_socket_name = elem.attrib['to_socket']
-        if to_socket_name in blender4_renames:
-            to_socket_name = blender4_renames[to_socket_name]
-        to_socket = to_node.inputs[to_socket_name]
+        to_socket = None
+        try:
+            to_socket = get_input(to_node, to_socket_name)
+        except KeyError:
+            pass
+
+        if from_socket is None and isinstance(from_node, NodeGroupInput):
+            if from_socket_name == 'enable':
+                ty = 'NodeSocketBool'
+            else:
+                assert to_socket is not None
+                ty = to_socket.bl_idname
+                if ty == 'NodeSocketFloatFactor':
+                    ty = 'NodeSocketFloat'
+
+            group.interface.new_socket(name=from_socket_name, in_out='INPUT', socket_type=ty)
+            from_socket = from_node.outputs[from_node.outputs.find(from_socket_name)]
+            assert from_socket is not None
+
+        if to_socket is None and isinstance(to_node, NodeGroupOutput) and to_socket_name not in to_node.inputs:
+            if to_socket_name == 'enable':
+                ty = 'NodeSocketBool'
+            else:
+                assert from_socket is not None
+                ty = from_socket.bl_idname
+                if ty == 'NodeSocketFloatFactor':
+                    ty = 'NodeSocketFloat'
+
+            group.interface.new_socket(name=to_socket_name, in_out='OUTPUT', socket_type=ty)
+            to_socket = to_node.inputs[to_node.inputs.find(to_socket_name)]
+            assert to_socket is not None
+
+        if from_socket is None and from_socket_name == 'Fac' and isinstance(from_node, ShaderNodeTexVoronoi):
+            # TODO: figure out what happened with this connection
+            return
+
+        if to_socket is None:
+            print(elem.attrib)
+
+        assert from_socket is not None
+        assert to_socket is not None
 
         if to_socket.is_linked and to_socket.type == 'SHADER' and from_socket.type == 'SHADER':
             implicit_add = group.nodes.new('ShaderNodeAddShader')
@@ -137,6 +326,12 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
     node.name = elem.get('name', '')
     node.label = node.name
 
+
+    if elem.tag == 'switch_float':
+        node.inputs[0].name = 'ValueEnable'
+        node.inputs[1].name = 'ValueDisable'
+    
+
     if isinstance(node, ShaderNodeRGB):
         color_output = node.outputs['Color']
         assert isinstance(color_output, NodeSocketColor)
@@ -152,14 +347,20 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
         node.inputs[1].name = 'Shader1'
         node.inputs[2].name = 'Shader2'
 
-    elif isinstance(node, ShaderNodeBsdfTranslucent | ShaderNodeBsdfPrincipled | ShaderNodeEmission):
+    elif isinstance(node, ConfigurableShaderNode):
+        # if isinstance(node, ShaderNodeMath | ShaderNodeMix) and elem.tag != 'switch_float':
+        #     node.inputs[0].name = 'Value1'
+        #     node.inputs[1].name = 'Value2'
+
         for socket_elem in elem:
             assert socket_elem.tag == 'input'
             input_name = socket_elem.get('name', '')
-            if input_name in blender4_renames:
-                input_name = blender4_renames[input_name]
 
-            socket = node.inputs[input_name]
+            if isinstance(node, ShaderNodeBevel) and input_name == 'Samples':
+                node.samples = int(socket_elem.get('value', ''))
+                continue
+
+            socket = get_input(node, input_name)
 
             if isinstance(socket, NodeSocketVector | NodeSocketColor):
                 # this is awful
@@ -175,18 +376,24 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
     elif isinstance(node, ShaderNodeGroup):
         group_name = elem.get('group_name', '')            
         if group_name in bpy.data.node_groups:
-            node.node_tree = bpy.data.node_groups[group_name] # type: ignore
-            return
-        
-        subgroup = bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree'))
+            subgroup = bpy.data.node_groups[group_name]
+            assert isinstance(subgroup, ShaderNodeTree)
+            node.node_tree = subgroup
+        else:
+            print('warning: new subgroup')
+            subgroup = bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree'))
         
         for socket_elem in elem:
             name = socket_elem.get('name', '')
             socket_type: Any = socket_types[socket_elem.get('type', '')]
             match socket_elem.tag:
                 case 'input':
+                    if node.inputs.find(name) >= 0:
+                        continue
                     subgroup.interface.new_socket(name, in_out='INPUT', socket_type=socket_type)
                 case 'output':
+                    if node.outputs.find(name) >= 0:
+                        continue
                     subgroup.interface.new_socket(name, in_out='OUTPUT', socket_type=socket_type)
 
         node.node_tree = bpy.data.node_groups[group_name] # type: ignore
@@ -201,8 +408,20 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
         node.convert_to = cast(Any, elem.attrib['convert_to'].upper())
         node.vector_type = cast(Any, elem.attrib['type'].upper())
 
-    elif isinstance(node, ShaderNodeTexCoord):
-        pass
+    elif isinstance(node, ShaderNodeMath):
+        node.operation = cast(Any, elem.attrib['type'].upper())
+        node.use_clamp = bool(elem.attrib['use_clamp'])
+
+    elif isinstance(node, ShaderNodeVectorMath):
+        if elem.tag == 'project_to_axis_plane':
+            node.inputs[0].name = 'In'
+            node.outputs[0].name = 'Out'
+        else:
+            operation = elem.attrib['type'].upper()
+            if operation == 'AVERAGE':
+                # todo
+                operation = 'ADD'
+            node.operation = cast(Any, operation)
 
     else:
         print(node)
