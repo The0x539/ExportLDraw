@@ -1,5 +1,6 @@
 import bpy
 import itertools
+import os.path
 
 from xml.etree import ElementTree as ET
 from typing import Iterable, Literal, Any, cast
@@ -21,10 +22,15 @@ from bpy.types import (
     ShaderNodeTexVoronoi,
     ShaderNodeValToRGB,
     ShaderNodeRGBCurve,
+    ShaderNodeBsdfPrincipled,
+    ShaderNodeBsdfAnisotropic,
+    ShaderNodeTexImage,
     NodeSocketVector,
     NodeSocketFloat,
     NodeSocketColor,
     NodeSocketFloatFactor,
+    NodeSocketInt,
+    NodeSocketBool,
     NodeGroupInput,
     NodeGroupOutput,
     Node,
@@ -52,7 +58,7 @@ blender4_renames = {
     # Not sure these are accurate.
     'TransmissionRoughness': 'Roughness',
     'Transmission Roughness': 'Roughness',
-    'SubsurfaceColor': 'Base Color',
+    'SubsurfaceColor': 'Subsurface Radius',
     'BaseColor': 'Base Color',
     'Color': 'Base Color',
 }
@@ -109,6 +115,8 @@ socket_types = {
     'closure': 'NodeSocketShader',
     'vector': 'NodeSocketVector',
     'float': 'NodeSocketFloat',
+    'int': 'NodeSocketInt',
+    'boolean': 'NodeSocketBool',
 }
 
 passthroughs = {
@@ -186,9 +194,9 @@ def get_output(node: Node, key: str) -> NodeSocket:
 
 def load_xml(filepath: str) -> None:
     tree = ET.parse(filepath)
-    process_xml(tree.getroot())
+    process_xml(tree.getroot(), os.path.dirname(filepath))
 
-def process_xml(root: ET.Element) -> None:
+def process_xml(root: ET.Element, dir: str) -> None:
     custom_nodes.uv_degradation()
     custom_nodes.project_to_axis_planes()
     
@@ -197,13 +205,13 @@ def process_xml(root: ET.Element) -> None:
             assert len(thing) == 1
             shader = thing[0]
             assert shader.tag == 'shader'
-            process_material(thing.attrib, shader)
+            process_material(thing.attrib, shader, dir)
 
         elif thing.tag == 'group':
             assert len(thing) == 1
             shader = thing[0]
             assert shader.tag == 'shader'
-            process_group(thing.attrib, shader)
+            process_group(thing.attrib, shader, dir)
 
 def extract_vector(elem: ET.Element) -> tuple:
     value = elem.get('value')
@@ -212,7 +220,7 @@ def extract_vector(elem: ET.Element) -> tuple:
     value = value.replace(', ', ' ') # I have no words
     return tuple(float(x) for x in value.split())
 
-def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Element]) -> None:
+def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Element], dir: str) -> None:
     material_name = material_attrib['name']
     material = bpy.data.materials.new(material_name)
     material.use_nodes = True
@@ -225,26 +233,17 @@ def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Elemen
     output.name = 'Output'
 
     for elem in shader:
-        process_node(group, elem)
+        process_node(group, elem, dir)
 
-def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element]) -> None:
+def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element], dir: str) -> None:
     group_name = group_attrib['name']
-    if group_name in (
-        'UVGroup2',
-        'CHROME-ANTIQUE-GROUP',
-        'UVTwoColorGroup',
-    ):
-        # TODO: figure out what a <uv_degradation /> is
-        # and a <mix />
-        return
-    
     group = bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree'))
     assert isinstance(group, ShaderNodeTree)
 
     for elem in nodes:
-        process_node(group, elem)
+        process_node(group, elem, dir)
 
-def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
+def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
     if elem.tag == 'connect':
         process_connect(group, elem)
         return
@@ -279,7 +278,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
     if isinstance(node, ShaderNodeRGB):
         color_output = node.outputs['Color']
         assert isinstance(color_output, NodeSocketColor)
-        color_output.default_value = extract_vector(elem) + (1.0,)
+        color_output.default_value = extract_vector(elem) + (0.0,)
         if elem.tag == 'vector':
             node.outputs['Color'].name = 'Vector'
 
@@ -350,7 +349,26 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
             node.mapping.curves[2].points.new(position, color.b)
             node.mapping.curves[3].points.new(position, 1.0)
 
+    elif isinstance(node, ShaderNodeBsdfPrincipled):
+        if subsurface_method := elem.get('subsurface_method'):
+            node.subsurface_method = cast(Any, subsurface_method.upper())
+
+        if distribution := elem.get('distribution'):
+            node.distribution = cast(Any, distribution.upper())
+
+    elif isinstance(node, ShaderNodeBsdfAnisotropic):
+        if distribution := elem.get('distribution'):
+            node.distribution = cast(Any, distribution.upper())
+
+    elif isinstance(node, ShaderNodeTexImage):
+        node.extension = cast(Any, elem.attrib['extension'].upper())
+
+        if filename := elem.get('filename'):
+            image_path = os.path.join(dir, filename)
+            node.image = bpy.data.images.load(image_path, check_existing=True)
+
     else:
+        # print the element if there are any element-specific attributes we should care about missing
         for key in elem.attrib.keys():
             if key != 'name':
                 print(elem.tag, str(elem.attrib))
@@ -376,6 +394,10 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
             socket.default_value = v
         elif isinstance(socket, NodeSocketFloat | NodeSocketFloatFactor):
             socket.default_value = float(socket_elem.get('value', ''))
+        elif isinstance(socket, NodeSocketInt):
+            socket.default_value = int(socket_elem.get('value', ''))
+        elif isinstance(socket, NodeSocketBool):
+            socket.default_value = bool(socket_elem.get('value', ''))
         else:
             print('Unrecognized socket:', socket)
 
