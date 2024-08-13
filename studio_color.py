@@ -4,34 +4,20 @@ from xml.etree import ElementTree as ET
 from typing import Iterable, Literal, Any, cast
 from mathutils import Color, Vector
 
+from . import custom_nodes
+
 from bpy.types import (
     ShaderNodeRGB,
     ShaderNodeAddShader,
     ShaderNodeMixShader,
-    ShaderNodeBsdfTranslucent,
-    ShaderNodeBsdfPrincipled,
     ShaderNodeValue,
-    ShaderNodeEmission,
-    ShaderNodeTexCoord,
     ShaderNodeVectorTransform,
     ShaderNodeGroup,
     ShaderNodeTree,
     ShaderNodeBevel,
-    ShaderNodeBump,
-    ShaderNodeTexNoise,
     ShaderNodeMath,
-    ShaderNodeMapping,
     ShaderNodeVectorMath,
-    ShaderNodeBsdfDiffuse,
-    ShaderNodeMix,
-    ShaderNodeNormalMap,
-    ShaderNodeBrightContrast,
-    ShaderNodeBsdfTransparent,
-    ShaderNodeBsdfAnisotropic,
-    ShaderNodeRGBCurve,
     ShaderNodeTexVoronoi,
-    ShaderNodeVolumeAbsorption,
-    ShaderNodeLayerWeight,
     NodeSocketVector,
     NodeSocketFloat,
     NodeSocketColor,
@@ -40,8 +26,8 @@ from bpy.types import (
     NodeGroupOutput,
     Node,
     NodeSocket,
-    NodeTree,
     NodeTreeInterfaceSocket,
+    NodeTree,
 )
 
 blender4_renames = {
@@ -106,6 +92,7 @@ node_types = {
     'geometry': 'ShaderNodeNewGeometry',
     'absorption_volume': 'ShaderNodeVolumeAbsorption',
     'layer_weight': 'ShaderNodeLayerWeight',
+    'mix': 'ShaderNodeMixRGB',
 }
 
 socket_types = {
@@ -120,6 +107,10 @@ passthroughs = {
     'MinColorRatio': 'NodeSocketFloat',
     'MaxColorRatio': 'NodeSocketFloat',
     'enable': 'NodeSocketBool',
+}
+
+custom_node_groups = {
+    'uv_degradation': 'UV Degradation',
 }
 
 def get_input(node: Node, key: str) -> NodeSocket:
@@ -188,6 +179,8 @@ def load_xml(filepath: str) -> None:
     process_xml(tree.getroot())
 
 def process_xml(root: ET.Element) -> None:
+    custom_nodes.uv_degradation()
+    
     for thing in root:
         if thing.tag == 'material':
             assert len(thing) == 1
@@ -226,7 +219,6 @@ def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Elemen
 def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element]) -> None:
     group_name = group_attrib['name']
     if group_name in (
-        'UVGroup',
         'UVGroup2',
         'CHROME-ANTIQUE-GROUP',
         'UVTwoColorGroup',
@@ -249,11 +241,22 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
         process_group_node(group, elem)
         return
 
-    try:
-        node: Node = group.nodes.new(node_types[elem.tag])
-    except KeyError:
-        print(elem)
-        return
+    node: Node
+    if elem.tag in custom_node_groups:
+        # The node is one of a handful that either were either removed from Blender or custom to Eyesight
+        # Emulate it using a custom node group
+        node = group.nodes.new('ShaderNodeGroup')
+        assert isinstance(node, ShaderNodeGroup)
+        tree = bpy.data.node_groups[custom_node_groups[elem.tag]]
+        assert isinstance(tree, ShaderNodeTree)
+        node.node_tree = tree
+    else:
+        try:
+            node_type = node_types[elem.tag]
+        except KeyError:
+            print(elem)
+            return
+        node = group.nodes.new(node_type)
 
     node.name = elem.get('name', '')
     node.label = node.name
