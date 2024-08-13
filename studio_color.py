@@ -1,4 +1,5 @@
 import bpy
+import itertools
 
 from xml.etree import ElementTree as ET
 from typing import Iterable, Literal, Any, cast
@@ -18,6 +19,8 @@ from bpy.types import (
     ShaderNodeMath,
     ShaderNodeVectorMath,
     ShaderNodeTexVoronoi,
+    ShaderNodeValToRGB,
+    ShaderNodeRGBCurve,
     NodeSocketVector,
     NodeSocketFloat,
     NodeSocketColor,
@@ -55,44 +58,51 @@ blender4_renames = {
 }
 
 node_types = {
+    'value': 'ShaderNodeValue',
     'color': 'ShaderNodeRGB',
-    'add_closure': 'ShaderNodeAddShader',
-    'mix_closure': 'ShaderNodeMixShader',
+    'vector': 'ShaderNodeRGB', # TODO: Custom node group with a three-number panel or whatever
+
     'translucent_bsdf': 'ShaderNodeBsdfTranslucent',
     'principled_bsdf': 'ShaderNodeBsdfPrincipled',
-    'emission': 'ShaderNodeEmission',
-    'group': 'ShaderNodeGroup',
-    'value': 'ShaderNodeValue',
-    'texture_coordinate': 'ShaderNodeTexCoord',
-    'vector': 'ShaderNodeRGB',
-    'vector_transform': 'ShaderNodeVectorTransform',
+    'transparent_bsdf': 'ShaderNodeBsdfTransparent',
+
+    'mix_value': 'ShaderNodeMix',
+    'mix': 'ShaderNodeMixRGB',
+    'mix_closure': 'ShaderNodeMixShader',
+
+    # In modern blender, mix can act as switch when the input is boolean
+    'switch_float': 'ShaderNodeMix',
+    'switch_closure': 'ShaderNodeMixShader', 
+    'glossy_bsdf': 'ShaderNodeBsdfAnisotropic', # unsure
+
+    'noise_texture': 'ShaderNodeTexNoise',
+    'image_texture': 'ShaderNodeTexImage',
+    'voronoi_texture': 'ShaderNodeTexVoronoi',
+
     'group_input': 'NodeGroupInput',
     'group_output': 'NodeGroupOutput',
+    'group': 'ShaderNodeGroup',
+
+    'add_closure': 'ShaderNodeAddShader',
+    'emission': 'ShaderNodeEmission',
+    'texture_coordinate': 'ShaderNodeTexCoord',
+    'vector_transform': 'ShaderNodeVectorTransform',
     'bump': 'ShaderNodeBump',
-    'noise_texture': 'ShaderNodeTexNoise',
     'rounding_edge_normal': 'ShaderNodeBevel',
-    'switch_closure': 'ShaderNodeMixShader', # I am at wit's end
     'math': 'ShaderNodeMath',
     'mapping': 'ShaderNodeMapping',
     'rgb_ramp': 'ShaderNodeValToRGB',
     'project_to_axis_plane': 'ShaderNodeVectorMath', # I have no idea what this node was supposed to do.
     'object_info': 'ShaderNodeObjectInfo',
-    'image_texture': 'ShaderNodeTexImage',
     'diffuse_bsdf': 'ShaderNodeBsdfDiffuse',
-    'mix_value': 'ShaderNodeMix',
-    'switch_float': 'ShaderNodeMix', # aaaaaaaaaaaaaaaaaaaa
     'normal_map': 'ShaderNodeNormalMap',
     'vector_math': 'ShaderNodeVectorMath',
     'brightness_contrast': 'ShaderNodeBrightContrast',
     'uvmap': 'ShaderNodeUVMap',
-    'transparent_bsdf': 'ShaderNodeBsdfTransparent',
-    'glossy_bsdf': 'ShaderNodeBsdfAnisotropic', # unsure
     'rgb_curves': 'ShaderNodeRGBCurve',
-    'voronoi_texture': 'ShaderNodeTexVoronoi',
     'geometry': 'ShaderNodeNewGeometry',
     'absorption_volume': 'ShaderNodeVolumeAbsorption',
     'layer_weight': 'ShaderNodeLayerWeight',
-    'mix': 'ShaderNodeMixRGB',
 }
 
 socket_types = {
@@ -305,9 +315,45 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
                 operation = 'ADD'
             node.operation = cast(Any, operation)
 
+    elif isinstance(node, ShaderNodeValToRGB):
+        original_elements = node.color_ramp.elements[:]
+        
+        interpolate = bool(elem.attrib['interpolate'])
+        node.color_ramp.interpolation = 'LINEAR' if interpolate else 'CONSTANT'
+        
+        samples = [float(x) for x in elem.attrib['ramp'].split()]
+        colors = list(Color(x) for x in zip(samples[::3], samples[1::3], samples[2::3]))
+
+        for i, color in enumerate(colors):
+            if can_skip(colors, i, interpolate):
+                continue
+
+            position = i / (len(colors) - 1)
+            stop = node.color_ramp.elements.new(position)
+            stop.color = (color.r, color.g, color.b, 1.0)
+
+        for e in original_elements:
+            node.color_ramp.elements.remove(e)
+
+    # This might be incorrect, because I don't understand the data.
+    elif isinstance(node, ShaderNodeRGBCurve):
+        node.mapping.white_level = Color((1.0, 1.0, 1.0))
+        
+        samples = [float(x) for x in elem.attrib['curves'].split()]
+        colors = list(Color(x) for x in zip(samples[::3], samples[1::3], samples[2::3]))
+
+        for i, color in enumerate(colors):
+            position = i / (len(colors) - 1)
+            node.mapping.curves[0].points.new(position, color.r)
+            node.mapping.curves[1].points.new(position, color.g)
+            node.mapping.curves[2].points.new(position, color.b)
+            node.mapping.curves[3].points.new(position, 1.0)
+
     else:
-        # print(node)
-        pass
+        for key in elem.attrib.keys():
+            if key != 'name':
+                print(elem.tag, str(elem.attrib))
+                break
 
     for socket_elem in elem:
         if not isinstance(node, ShaderNodeGroup):
@@ -417,3 +463,24 @@ def process_connect(group: ShaderNodeTree, elem: ET.Element) -> None:
 
     group.links.new(from_socket, to_socket)
     return
+
+# Eliminate redundant RGB ramp stops because the XML always has 255 equally-spaced stops,
+# but Blender has a limit of 32 and allows specifying position
+def can_skip(colors: list[Color], i: int, interpolate: bool) -> bool:
+    try:
+        prev = colors[i - 1]
+        cur = colors[i]
+        next = colors[i + 1]
+    except IndexError:
+        return False
+
+    if prev == cur and cur == next:
+        return True
+
+    if interpolate:
+        mid = (prev + next) / 2
+        diff = cur - mid
+        if max(abs(diff.r), abs(diff.g), abs(diff.b)) < 0.0001:
+            return True
+
+    return False
