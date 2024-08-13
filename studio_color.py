@@ -389,7 +389,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
             node.image = bpy.data.images.load(image_path, check_existing=True)
         else:
             img = bpy.data.images.new('blank', 1, 1, alpha=True)
-            img.pixels = (0.0, 0.0, 0.0, 0.0)
+            img.pixels = (0.0, 0.0, 0.0, 0.0) # type: ignore
             img.update()
             node.image = img
 
