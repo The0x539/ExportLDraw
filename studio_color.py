@@ -42,6 +42,27 @@ blender4_renames = {
     'BaseColor': 'Base Color',
 }
 
+node_types = {
+    'color': 'ShaderNodeRGB',
+    'add_closure': 'ShaderNodeAddShader',
+    'mix_closure': 'ShaderNodeMixShader',
+    'translucent_bsdf': 'ShaderNodeBsdfTranslucent',
+    'principled_bsdf': 'ShaderNodeBsdfPrincipled',
+    'emission': 'ShaderNodeEmission',
+    'group': 'ShaderNodeGroup',
+    'value': 'ShaderNodeValue',
+    'texture_coordinate': 'ShaderNodeTexCoord',
+    'vector': 'ShaderNodeRGB',
+    'vector_transform': 'ShaderNodeVectorTransform',
+}
+
+socket_types = {
+    'color': 'NodeSocketColor',
+    'closure': 'NodeSocketShader',
+    'vector': 'NodeSocketVector',
+    'float': 'NodeSocketFloat',
+}
+
 def load_xml(filepath: str) -> None:
     tree = ET.parse(filepath)
     process_xml(tree.getroot())
@@ -107,20 +128,6 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
         group.links.new(from_socket, to_socket)
         return
 
-    node_types = {
-        'color': 'ShaderNodeRGB',
-        'add_closure': 'ShaderNodeAddShader',
-        'mix_closure': 'ShaderNodeMixShader',
-        'translucent_bsdf': 'ShaderNodeBsdfTranslucent',
-        'principled_bsdf': 'ShaderNodeBsdfPrincipled',
-        'emission': 'ShaderNodeEmission',
-        'group': 'ShaderNodeGroup',
-        'value': 'ShaderNodeValue',
-        'texture_coordinate': 'ShaderNodeTexCoord',
-        'vector': 'ShaderNodeRGB',
-        'vector_transform': 'ShaderNodeVectorTransform',
-    }
-
     try:
         node: Node = group.nodes.new(node_types[elem.tag])
     except KeyError:
@@ -175,12 +182,12 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
         
         for socket_elem in elem:
             name = socket_elem.get('name', '')
-            ty = socket_elem.get('type', '')
+            socket_type: Any = socket_types[socket_elem.get('type', '')]
             match socket_elem.tag:
                 case 'input':
-                    subgroup.interface.new_socket(name, in_out='INPUT')
+                    subgroup.interface.new_socket(name, in_out='INPUT', socket_type=socket_type)
                 case 'output':
-                    subgroup.interface.new_socket(name, in_out='OUTPUT')
+                    subgroup.interface.new_socket(name, in_out='OUTPUT', socket_type=socket_type)
 
         node.node_tree = bpy.data.node_groups[group_name] # type: ignore
 
