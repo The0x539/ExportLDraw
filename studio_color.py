@@ -95,6 +95,15 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
             to_socket_name = blender4_renames[to_socket_name]
         to_socket = to_node.inputs[to_socket_name]
 
+        if to_socket.is_linked and to_socket.type == 'SHADER' and from_socket.type == 'SHADER':
+            implicit_add = group.nodes.new('ShaderNodeAddShader')
+            previous_link = to_socket.links[0]
+            previous_from_socket = previous_link.from_socket
+            group.links.remove(previous_link)
+            group.links.new(previous_from_socket, implicit_add.inputs[0])
+            group.links.new(from_socket, implicit_add.inputs[1])
+            from_socket = implicit_add.outputs[0]
+
         group.links.new(from_socket, to_socket)
         return
 
