@@ -41,6 +41,7 @@ from bpy.types import (
     Node,
     NodeSocket,
     NodeTree,
+    NodeTreeInterfaceSocket,
 )
 
 # TODO: get rid of this and just do it for all nodes
@@ -77,6 +78,7 @@ blender4_renames = {
     'SpecularTint': 'Specular Tint',
     'AnisotropicRotation': 'Anisotropic Rotation',
     'SubsurfaceRadius': 'Subsurface Radius',
+    'Fac': 'Factor',
 
     # Not sure these are accurate.
     'TransmissionRoughness': 'Roughness',
@@ -133,6 +135,13 @@ socket_types = {
     'float': 'NodeSocketFloat',
 }
 
+passthroughs = {
+    'Levels': 'NodeSocketInt',
+    'MinColorRatio': 'NodeSocketFloat',
+    'MaxColorRatio': 'NodeSocketFloat',
+    'enable': 'NodeSocketBool',
+}
+
 def get_input(node: Node, key: str) -> NodeSocket:
     i = node.inputs.find(key)
     if i >= 0:
@@ -156,7 +165,6 @@ def get_input(node: Node, key: str) -> NodeSocket:
         'Vector1': 0,
         'Vector2': 1,
         'Value': 0,
-        'Fac': 0,
     }
 
     if key in desperation and desperation[key] < len(node.inputs):
@@ -174,6 +182,9 @@ def get_output(node: Node, key: str) -> NodeSocket:
 
     if key in blender4_renames:
         key = blender4_renames[key]
+
+    if key == 'Factor' and isinstance(node, ShaderNodeTexVoronoi):
+        key = 'Distance' # TODO: or 'Position'?
 
     i = node.outputs.find(key)
     if i >= 0:
@@ -239,7 +250,6 @@ def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element]) -> 
         'UVGroup2',
         'CHROME-ANTIQUE-GROUP',
         'UVTwoColorGroup',
-        'UVTwoInputDegradationGroup',
     ):
         # TODO: figure out what a <uv_degradation /> is
         # and a <mix />
@@ -253,68 +263,10 @@ def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element]) -> 
 
 def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
     if elem.tag == 'connect':
-        from_node = group.nodes[elem.attrib['from_node']]
-        from_socket_name = elem.attrib['from_socket']
-        from_socket = None
-        try:
-            from_socket = get_output(from_node, from_socket_name)
-        except KeyError:
-            pass
-        
-        to_node = group.nodes[elem.attrib['to_node']]
-        to_socket_name = elem.attrib['to_socket']
-        to_socket = None
-        try:
-            to_socket = get_input(to_node, to_socket_name)
-        except KeyError:
-            pass
-
-        if from_socket is None and isinstance(from_node, NodeGroupInput):
-            if from_socket_name == 'enable':
-                ty = 'NodeSocketBool'
-            else:
-                assert to_socket is not None
-                ty = to_socket.bl_idname
-                if ty == 'NodeSocketFloatFactor':
-                    ty = 'NodeSocketFloat'
-
-            group.interface.new_socket(name=from_socket_name, in_out='INPUT', socket_type=ty)
-            from_socket = from_node.outputs[from_node.outputs.find(from_socket_name)]
-            assert from_socket is not None
-
-        if to_socket is None and isinstance(to_node, NodeGroupOutput) and to_socket_name not in to_node.inputs:
-            if to_socket_name == 'enable':
-                ty = 'NodeSocketBool'
-            else:
-                assert from_socket is not None
-                ty = from_socket.bl_idname
-                if ty == 'NodeSocketFloatFactor':
-                    ty = 'NodeSocketFloat'
-
-            group.interface.new_socket(name=to_socket_name, in_out='OUTPUT', socket_type=ty)
-            to_socket = to_node.inputs[to_node.inputs.find(to_socket_name)]
-            assert to_socket is not None
-
-        if from_socket is None and from_socket_name == 'Fac' and isinstance(from_node, ShaderNodeTexVoronoi):
-            # TODO: figure out what happened with this connection
-            return
-
-        if to_socket is None:
-            print(elem.attrib)
-
-        assert from_socket is not None
-        assert to_socket is not None
-
-        if to_socket.is_linked and to_socket.type == 'SHADER' and from_socket.type == 'SHADER':
-            implicit_add = group.nodes.new('ShaderNodeAddShader')
-            previous_link = to_socket.links[0]
-            previous_from_socket = previous_link.from_socket
-            group.links.remove(previous_link)
-            group.links.new(previous_from_socket, implicit_add.inputs[0])
-            group.links.new(from_socket, implicit_add.inputs[1])
-            from_socket = implicit_add.outputs[0]
-
-        group.links.new(from_socket, to_socket)
+        process_connect(group, elem)
+        return
+    elif elem.tag == 'group':
+        process_group_node(group, elem)
         return
 
     try:
@@ -326,11 +278,9 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
     node.name = elem.get('name', '')
     node.label = node.name
 
-
     if elem.tag == 'switch_float':
         node.inputs[0].name = 'ValueEnable'
         node.inputs[1].name = 'ValueDisable'
-    
 
     if isinstance(node, ShaderNodeRGB):
         color_output = node.outputs['Color']
@@ -348,10 +298,6 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
         node.inputs[2].name = 'Shader2'
 
     elif isinstance(node, ConfigurableShaderNode):
-        # if isinstance(node, ShaderNodeMath | ShaderNodeMix) and elem.tag != 'switch_float':
-        #     node.inputs[0].name = 'Value1'
-        #     node.inputs[1].name = 'Value2'
-
         for socket_elem in elem:
             assert socket_elem.tag == 'input'
             input_name = socket_elem.get('name', '')
@@ -372,32 +318,6 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
                 socket.default_value = float(socket_elem.get('value', ''))
             else:
                 print('Unrecognized socket:', socket)
-
-    elif isinstance(node, ShaderNodeGroup):
-        group_name = elem.get('group_name', '')            
-        if group_name in bpy.data.node_groups:
-            subgroup = bpy.data.node_groups[group_name]
-            assert isinstance(subgroup, ShaderNodeTree)
-            node.node_tree = subgroup
-        else:
-            print('warning: new subgroup')
-            subgroup = bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree'))
-        
-        for socket_elem in elem:
-            name = socket_elem.get('name', '')
-            socket_type: Any = socket_types[socket_elem.get('type', '')]
-            match socket_elem.tag:
-                case 'input':
-                    if node.inputs.find(name) >= 0:
-                        continue
-                    subgroup.interface.new_socket(name, in_out='INPUT', socket_type=socket_type)
-                case 'output':
-                    if node.outputs.find(name) >= 0:
-                        continue
-                    subgroup.interface.new_socket(name, in_out='OUTPUT', socket_type=socket_type)
-
-        node.node_tree = bpy.data.node_groups[group_name] # type: ignore
-
     elif isinstance(node, ShaderNodeValue):
         value_output = node.outputs['Value']
         assert isinstance(value_output, NodeSocketFloat)
@@ -424,4 +344,91 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
             node.operation = cast(Any, operation)
 
     else:
-        print(node)
+        pass
+        # print(node)
+
+# TODO: this probably has more in common with the other nodes than I thought,
+# once defining all the groups ahead of time is taken care of
+def process_group_node(group: ShaderNodeTree, elem: ET.Element) -> None:
+    node = group.nodes.new('ShaderNodeGroup')
+    assert isinstance(node, ShaderNodeGroup)
+
+    node.name = elem.attrib['name']
+
+    group_name = elem.get('group_name', '')            
+    if group_name in bpy.data.node_groups:
+        subgroup = cast(ShaderNodeTree, bpy.data.node_groups[group_name])
+        node.node_tree = subgroup
+    else:
+        print('missing group:', group_name)
+        subgroup = cast(ShaderNodeTree, bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree')))
+
+    assert isinstance(subgroup, ShaderNodeTree)
+
+    for socket_elem in elem:
+        name = socket_elem.get('name', '')
+        socket_type: Any = socket_types[socket_elem.get('type', '')]
+
+        in_out: Literal['INPUT', 'OUTPUT']
+        match socket_elem.tag:
+            case 'input': in_out = 'INPUT'
+            case 'output': in_out = 'OUTPUT'
+            case _:
+                print('unrecognized child of group', socket_elem)
+                continue
+
+        for socket in subgroup.interface.items_tree:
+            if not isinstance(socket, NodeTreeInterfaceSocket): continue 
+            if socket.in_out != in_out: continue
+            if socket.name != name: continue
+
+            weird_scenario = (
+                (group_name, in_out, name) == ('SPECKLE-GROUP', 'INPUT', 'XOffset')
+                and
+                (socket.bl_socket_idname, socket_type) == ('NodeSocketFloat', 'NodeSocketColor')
+            )
+            assert socket.bl_socket_idname == socket_type or weird_scenario
+            break
+        else:
+            print(f'missing socket: {group_name}::{in_out} / {name} {socket_type}')
+            subgroup.interface.new_socket(name, in_out=in_out, socket_type=socket_type)
+
+    node.node_tree = bpy.data.node_groups[group_name] # type: ignore
+
+def process_connect(group: ShaderNodeTree, elem: ET.Element) -> None:
+    from_node = group.nodes[elem.attrib['from_node']]
+    from_socket_name = elem.attrib['from_socket']
+    to_node = group.nodes[elem.attrib['to_node']]
+    to_socket_name = elem.attrib['to_socket']
+
+    if isinstance(from_node, NodeGroupInput) and from_node.outputs.find(from_socket_name) < 0:
+        if isinstance(to_node, NodeGroupOutput):
+            # awful hack for an awful piece of data
+            # a group with connections directly from its input to its output,
+            # such that datatypes can only be inferred later when the group is used by a larger node graph
+            socket_type = passthroughs[from_socket_name]
+        else:
+            to_socket = get_input(to_node, to_socket_name)
+            socket_type = to_socket.bl_idname.replace('FloatFactor', 'Float')
+
+        group.interface.new_socket(name=from_socket_name, in_out='INPUT', socket_type=socket_type)
+
+    from_socket = get_output(from_node, from_socket_name)
+
+    if isinstance(to_node, NodeGroupOutput) and to_node.inputs.find(to_socket_name) < 0:
+        socket_type = from_socket.bl_idname.replace('FloatFactor', 'Float')
+        group.interface.new_socket(name=to_socket_name, in_out='OUTPUT', socket_type=socket_type)
+
+    to_socket = get_input(to_node, to_socket_name)
+
+    if to_socket.is_linked and to_socket.type == 'SHADER' and from_socket.type == 'SHADER':
+        implicit_add = group.nodes.new('ShaderNodeAddShader')
+        previous_link = to_socket.links[0]
+        previous_from_socket = previous_link.from_socket
+        group.links.remove(previous_link)
+        group.links.new(previous_from_socket, implicit_add.inputs[0])
+        group.links.new(from_socket, implicit_add.inputs[1])
+        from_socket = implicit_add.outputs[0]
+
+    group.links.new(from_socket, to_socket)
+    return
