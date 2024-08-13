@@ -92,7 +92,6 @@ node_types = {
     'math': 'ShaderNodeMath',
     'mapping': 'ShaderNodeMapping',
     'rgb_ramp': 'ShaderNodeValToRGB',
-    'project_to_axis_plane': 'ShaderNodeVectorMath', # I have no idea what this node was supposed to do.
     'object_info': 'ShaderNodeObjectInfo',
     'diffuse_bsdf': 'ShaderNodeBsdfDiffuse',
     'normal_map': 'ShaderNodeNormalMap',
@@ -121,6 +120,7 @@ passthroughs = {
 
 custom_node_groups = {
     'uv_degradation': 'UV Degradation',
+    'project_to_axis_plane': 'Project to Axis Planes',
 }
 
 def get_input(node: Node, key: str) -> NodeSocket:
@@ -190,6 +190,7 @@ def load_xml(filepath: str) -> None:
 
 def process_xml(root: ET.Element) -> None:
     custom_nodes.uv_degradation()
+    custom_nodes.project_to_axis_planes()
     
     for thing in root:
         if thing.tag == 'material':
