@@ -44,26 +44,6 @@ from bpy.types import (
     NodeTreeInterfaceSocket,
 )
 
-# TODO: get rid of this and just do it for all nodes
-ConfigurableShaderNode = (
-    ShaderNodeBsdfTranslucent
-    | ShaderNodeBsdfPrincipled
-    | ShaderNodeEmission
-    | ShaderNodeBump
-    | ShaderNodeBevel
-    | ShaderNodeTexNoise
-    | ShaderNodeMath
-    | ShaderNodeMix
-    | ShaderNodeNormalMap
-    | ShaderNodeBrightContrast
-    | ShaderNodeBsdfTransparent
-    | ShaderNodeBsdfAnisotropic
-    | ShaderNodeRGBCurve
-    | ShaderNodeTexVoronoi
-    | ShaderNodeVolumeAbsorption
-    | ShaderNodeLayerWeight
-)
-
 blender4_renames = {
     'Subsurface': 'Subsurface Weight',
     'Clearcoat': 'Coat Weight',
@@ -297,27 +277,6 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
         node.inputs[1].name = 'Shader1'
         node.inputs[2].name = 'Shader2'
 
-    elif isinstance(node, ConfigurableShaderNode):
-        for socket_elem in elem:
-            assert socket_elem.tag == 'input'
-            input_name = socket_elem.get('name', '')
-
-            if isinstance(node, ShaderNodeBevel) and input_name == 'Samples':
-                node.samples = int(socket_elem.get('value', ''))
-                continue
-
-            socket = get_input(node, input_name)
-
-            if isinstance(socket, NodeSocketVector | NodeSocketColor):
-                # this is awful
-                v = extract_vector(socket_elem)
-                while len(v) < len(socket.default_value):
-                    v += (0.0,)
-                socket.default_value = v
-            elif isinstance(socket, NodeSocketFloat | NodeSocketFloatFactor):
-                socket.default_value = float(socket_elem.get('value', ''))
-            else:
-                print('Unrecognized socket:', socket)
     elif isinstance(node, ShaderNodeValue):
         value_output = node.outputs['Value']
         assert isinstance(value_output, NodeSocketFloat)
@@ -344,8 +303,31 @@ def process_node(group: ShaderNodeTree, elem: ET.Element) -> None:
             node.operation = cast(Any, operation)
 
     else:
-        pass
         # print(node)
+        pass
+
+    for socket_elem in elem:
+        if not isinstance(node, ShaderNodeGroup):
+            assert socket_elem.tag == 'input'
+
+        input_name = socket_elem.get('name', '')
+
+        if isinstance(node, ShaderNodeBevel) and input_name == 'Samples':
+            node.samples = int(socket_elem.get('value', ''))
+            continue
+
+        socket = get_input(node, input_name)
+
+        if isinstance(socket, NodeSocketVector | NodeSocketColor):
+            # this is awful
+            v = extract_vector(socket_elem)
+            while len(v) < len(socket.default_value):
+                v += (0.0,)
+            socket.default_value = v
+        elif isinstance(socket, NodeSocketFloat | NodeSocketFloatFactor):
+            socket.default_value = float(socket_elem.get('value', ''))
+        else:
+            print('Unrecognized socket:', socket)
 
 # TODO: this probably has more in common with the other nodes than I thought,
 # once defining all the groups ahead of time is taken care of
@@ -366,8 +348,8 @@ def process_group_node(group: ShaderNodeTree, elem: ET.Element) -> None:
     assert isinstance(subgroup, ShaderNodeTree)
 
     for socket_elem in elem:
-        name = socket_elem.get('name', '')
-        socket_type: Any = socket_types[socket_elem.get('type', '')]
+        name = socket_elem.attrib['name']
+        socket_type = socket_types[socket_elem.attrib['type']]
 
         in_out: Literal['INPUT', 'OUTPUT']
         match socket_elem.tag:
