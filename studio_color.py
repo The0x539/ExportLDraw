@@ -7,6 +7,7 @@ from typing import Iterable, Literal, Any, cast
 from mathutils import Color, Vector
 
 from . import custom_nodes
+from . import arrange
 
 from bpy.types import (
     ShaderNodeRGB,
@@ -236,6 +237,8 @@ def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Elemen
     for elem in shader:
         process_node(group, elem, dir)
 
+    arrange.nodes_iterate(group)
+
 def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element], dir: str) -> None:
     group_name = group_attrib['name']
     group = bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree'))
@@ -243,6 +246,8 @@ def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element], dir
 
     for elem in nodes:
         process_node(group, elem, dir)
+
+    arrange.nodes_iterate(group)
 
 def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
     if elem.tag == 'connect':
