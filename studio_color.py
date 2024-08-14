@@ -150,8 +150,6 @@ def get_input(node: Node, key: str) -> NodeSocket:
         return node.inputs[i]
     
     desperation: dict[str, Any] = {
-        'ValueEnable': 0,
-        'ValueDisable': 1,
         'Value1': 0,
         'Value2': 1,
         'Vector1': 0,
@@ -274,9 +272,10 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
     node.name = elem.get('name', '')
     node.label = node.name
 
-    if elem.tag == 'switch_float':
-        node.inputs[0].name = 'ValueEnable'
-        node.inputs[1].name = 'ValueDisable'
+    if elem.tag.startswith('switch'):
+        if enable := elem.get('enable'):
+            assert isinstance(node.inputs[0], NodeSocketFloat | NodeSocketFloatFactor)
+            node.inputs[0].default_value = float(bool(enable))
 
     if isinstance(node, ShaderNodeRGB):
         color_output = node.outputs['Color']
@@ -294,6 +293,13 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         node.inputs[2].name = 'Shader2'
 
     elif isinstance(node, ShaderNodeMix):
+        if elem.tag == 'switch_float':
+            node.inputs['A'].name = 'ValueDisable'
+            node.inputs['B'].name = 'ValueEnable'
+        else:
+            node.inputs['A'].name = 'Value1'
+            node.inputs['B'].name = 'Value2'
+
         if blend_type := elem.get('type'):
             node.blend_type = cast(Any, blend_type.upper())
         if use_clamp := elem.get('use_clamp'):

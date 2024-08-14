@@ -3,9 +3,12 @@ from typing import Any, cast, TypeVar, Type
 from bpy.types import (
     ShaderNodeMath,
     ShaderNodeSeparateXYZ,
+    ShaderNodeTexCoord,
     ShaderNodeCombineXYZ,
+    ShaderNodeObjectInfo,
     ShaderNodeMix,
     ShaderNodeMixRGB,
+    ShaderNodeTexNoise,
     NodeSocketFloat,
     NodeSocketVector,
     NodeTreeInterfaceSocketInt,
@@ -28,7 +31,7 @@ def uv_degradation() -> None:
         ('MinRoughness', 'Float'),
         ('MaxRoughness', 'Float'),
         ('Strength', 'Float'),
-        ('enable', 'Bool'),
+        ('enable', 'Bool'), # TODO: respect this value
     ):
         group.interface.new_socket(name, in_out='INPUT', socket_type='NodeSocket' + ty)
 
@@ -44,8 +47,11 @@ def uv_degradation() -> None:
     input = group.nodes.new('NodeGroupInput')
     output = group.nodes.new('NodeGroupOutput')
 
-    # TODO: I think this needs an input in order to do its job properly
-    rand = group.nodes.new('ShaderNodeTexWhiteNoise')
+    object_info = new_node(group, ShaderNodeObjectInfo)
+
+    rand = new_node(group, ShaderNodeTexNoise)
+    rand.noise_dimensions = '1D'
+    group.links.new(object_info.outputs['Object Index'], rand.inputs['W'])
 
     # levels_gt_1 = levels > 1
     levels_gt_1 = new_math(group, 'GREATER_THAN', 'Levels > 1')
@@ -55,7 +61,7 @@ def uv_degradation() -> None:
 
     # step_1 = rand() * levels_gt_1
     step_1 = new_math(group, 'MULTIPLY')
-    group.links.new(rand.outputs['Value'], step_1.inputs[0])
+    group.links.new(rand.outputs[0], step_1.inputs[0])
     group.links.new(levels_gt_1.outputs[0], step_1.inputs[1])
 
     # step_2 = floor(step_1)
@@ -136,20 +142,31 @@ def project_to_axis_planes() -> None:
     input = group.nodes.new('NodeGroupInput')
     output = group.nodes.new('NodeGroupOutput')
 
-    split = new_node(group, ShaderNodeSeparateXYZ, 'Split')
-    group.links.new(input.outputs[0], split.inputs[0])
+    tex_coord = new_node(group, ShaderNodeTexCoord)
 
-    [x, y, z] = split.outputs
+    split_normal = new_node(group, ShaderNodeSeparateXYZ, 'Split Normal')
+    group.links.new(tex_coord.outputs['Normal'], split_normal.inputs[0])
+
+    abs_x = new_math(group, 'ABSOLUTE', 'Abs(X)')
+    group.links.new(split_normal.outputs['X'], abs_x.inputs[0])
+    
+    abs_y = new_math(group, 'ABSOLUTE', 'Abs(Y)')
+    group.links.new(split_normal.outputs['Y'], abs_y.inputs[0])
 
     facing_x = new_math(group, 'GREATER_THAN', 'Facing X')
-    group.links.new(x, facing_x.inputs[0])
+    group.links.new(abs_x.outputs[0], facing_x.inputs[0])
     assert isinstance(facing_x.inputs[1], NodeSocketFloat)
     facing_x.inputs[1].default_value = 0.5
 
     facing_y = new_math(group, 'GREATER_THAN', 'Facing Y')
-    group.links.new(y, facing_y.inputs[0])
+    group.links.new(abs_y.outputs[0], facing_y.inputs[0])
     assert isinstance(facing_y.inputs[1], NodeSocketFloat)
     facing_y.inputs[1].default_value = 0.5
+
+    split_pos = new_node(group, ShaderNodeSeparateXYZ, 'Split Position')
+    group.links.new(input.outputs[0], split_pos.inputs[0])
+
+    [x, y, z] = split_pos.outputs
 
     xzy = new_node(group, ShaderNodeCombineXYZ, 'XZY')
     group.links.new(x, xzy.inputs[0])
@@ -161,19 +178,21 @@ def project_to_axis_planes() -> None:
     group.links.new(z, yzx.inputs[1])
     group.links.new(x, yzx.inputs[2])
 
-    if_facing_y = new_node(group, ShaderNodeMixRGB, 'If')
+    if_facing_y = new_node(group, ShaderNodeMix, 'if facing Y')
+    if_facing_y.data_type = 'VECTOR'
 
-    elif_facing_x = new_node(group, ShaderNodeMixRGB, 'Else')
+    elif_facing_x = new_node(group, ShaderNodeMix, 'elseif facing X')
+    elif_facing_x.data_type = 'VECTOR'
 
-    group.links.new(facing_y.outputs[0], if_facing_y.inputs[0])
-    group.links.new(elif_facing_x.outputs[0], if_facing_y.inputs[1])
-    group.links.new(xzy.outputs[0], if_facing_y.inputs[2])
+    group.links.new(facing_y.outputs[0], if_facing_y.inputs['Factor'])
+    group.links.new(elif_facing_x.outputs['Result'], if_facing_y.inputs['A'])
+    group.links.new(xzy.outputs[0], if_facing_y.inputs['B'])
 
-    group.links.new(facing_x.outputs[0], elif_facing_x.inputs[0])
-    group.links.new(input.outputs[0], elif_facing_x.inputs[1])
-    group.links.new(yzx.outputs[0], elif_facing_x.inputs[2])
+    group.links.new(facing_x.outputs[0], elif_facing_x.inputs['Factor'])
+    group.links.new(input.outputs[0], elif_facing_x.inputs['A'])
+    group.links.new(yzx.outputs[0], elif_facing_x.inputs['B'])
 
-    group.links.new(if_facing_y.outputs[0], output.inputs[0])
+    group.links.new(if_facing_y.outputs['Result'], output.inputs[0])
 
 N = TypeVar('N', bound=Node)
 
