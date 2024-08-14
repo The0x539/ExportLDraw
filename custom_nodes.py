@@ -8,10 +8,11 @@ from bpy.types import (
     ShaderNodeObjectInfo,
     ShaderNodeMix,
     ShaderNodeMixRGB,
-    ShaderNodeTexNoise,
     NodeSocketFloat,
     NodeSocketVector,
     NodeTreeInterfaceSocketInt,
+    NodeGroupInput,
+    NodeGroupOutput,
     Node,
     ShaderNodeTree,
 )
@@ -44,14 +45,10 @@ def uv_degradation() -> None:
     group.interface.new_socket('OutColor', in_out='OUTPUT', socket_type='NodeSocketColor')
     group.interface.new_socket('OutRoughness', in_out='OUTPUT', socket_type='NodeSocketFloat')
 
-    input = group.nodes.new('NodeGroupInput')
-    output = group.nodes.new('NodeGroupOutput')
+    input = new_node(group, NodeGroupInput)
+    output = new_node(group, NodeGroupOutput)
 
     object_info = new_node(group, ShaderNodeObjectInfo)
-
-    rand = new_node(group, ShaderNodeTexNoise)
-    rand.noise_dimensions = '1D'
-    group.links.new(object_info.outputs['Object Index'], rand.inputs['W'])
 
     # levels_gt_1 = levels > 1
     levels_gt_1 = new_math(group, 'GREATER_THAN', 'Levels > 1')
@@ -59,10 +56,10 @@ def uv_degradation() -> None:
     assert isinstance(levels_gt_1.inputs[1], NodeSocketFloat)
     levels_gt_1.inputs[1].default_value = 1
 
-    # step_1 = rand() * levels_gt_1
+    # step_1 = rand() * Levels
     step_1 = new_math(group, 'MULTIPLY')
-    group.links.new(rand.outputs[0], step_1.inputs[0])
-    group.links.new(levels_gt_1.outputs[0], step_1.inputs[1])
+    group.links.new(object_info.outputs['Random'], step_1.inputs[0])
+    group.links.new(input.outputs['Levels'], step_1.inputs[1])
 
     # step_2 = floor(step_1)
     step_2 = new_math(group, 'FLOOR')
@@ -83,10 +80,10 @@ def uv_degradation() -> None:
     # t = step_4 if levels > 1 else 0
     t = new_node(group, ShaderNodeMix, 't')
     t.data_type = 'FLOAT'
-    group.links.new(levels_gt_1.outputs[0], t.inputs[0])
-    assert isinstance(t.inputs[1], NodeSocketVector)
-    t.inputs[1].default_value = (0.0, 0.0, 0.0)
-    group.links.new(step_4.outputs[0], t.inputs[2])
+    group.links.new(levels_gt_1.outputs[0], t.inputs['Factor'])
+    assert isinstance(t.inputs['A'], NodeSocketFloat)
+    t.inputs['A'].default_value = 0.0
+    group.links.new(step_4.outputs[0], t.inputs['B'])
 
     # ratio_range = MaxColorRatio - MinColorRatio
     ratio_range = new_math(group, 'SUBTRACT', 'ratio_range')
@@ -104,16 +101,20 @@ def uv_degradation() -> None:
     group.links.new(ratio.outputs[0], color_t.inputs[0])
     group.links.new(input.outputs['Strength'], color_t.inputs[1])
 
+    # a second node just for tidiness purposes
+    input2 = new_node(group, NodeGroupInput)
+
     # out_color = interp(from_color, to_color, color_t)
-    out_color = new_node(group, ShaderNodeMixRGB, 'OutColor')
+    out_color = new_node(group, ShaderNodeMix, 'OutColor')
+    out_color.data_type = 'RGBA'
     group.links.new(color_t.outputs[0], out_color.inputs[0])
-    group.links.new(input.outputs['FromColor'], out_color.inputs[1])
-    group.links.new(input.outputs['ToColor'], out_color.inputs[2])
+    group.links.new(input2.outputs['FromColor'], out_color.inputs['A'])
+    group.links.new(input2.outputs['ToColor'], out_color.inputs['B'])
 
     # roughness_range = MaxRoughness - MinRoughness
     roughness_range = new_math(group, 'SUBTRACT', 'roughness_range')
-    group.links.new(input.outputs['MaxRoughness'], roughness_range.inputs[0])
-    group.links.new(input.outputs['MinRoughness'], roughness_range.inputs[1])
+    group.links.new(input2.outputs['MaxRoughness'], roughness_range.inputs[0])
+    group.links.new(input2.outputs['MinRoughness'], roughness_range.inputs[1])
 
     # t_strength = t * strength
     t_strength = new_math(group, 'MULTIPLY', 't * Strength')
@@ -126,8 +127,23 @@ def uv_degradation() -> None:
     group.links.new(roughness_range.outputs[0], out_roughness.inputs[1])
     group.links.new(input.outputs['MinRoughness'], out_roughness.inputs[2])
 
-    group.links.new(out_color.outputs[0], output.inputs['OutColor'])
-    group.links.new(out_roughness.outputs[0], output.inputs['OutRoughness'])
+    input3 = new_node(group, NodeGroupInput)
+
+    toggle_out_color = new_node(group, ShaderNodeMix, 'Color Toggle')
+    toggle_out_color.data_type = 'RGBA'
+    group.links.new(input3.outputs['enable'], toggle_out_color.inputs[0])
+    group.links.new(input3.outputs['FromColor'], toggle_out_color.inputs['A'])
+    group.links.new(out_color.outputs['Result'], toggle_out_color.inputs['B'])
+
+    toggle_out_roughness = new_node(group, ShaderNodeMix, 'Roughness Toggle')
+    toggle_out_roughness.data_type = 'FLOAT'
+    group.links.new(input3.outputs['enable'], toggle_out_roughness.inputs[0])
+    group.links.new(input3.outputs['MinRoughness'], toggle_out_roughness.inputs['A'])
+    group.links.new(out_roughness.outputs[0], toggle_out_roughness.inputs['B'])
+
+    group.links.new(toggle_out_color.outputs['Result'], output.inputs['OutColor'])
+    group.links.new(toggle_out_roughness.outputs['Result'], output.inputs['OutRoughness'])
+
 
 def project_to_axis_planes() -> None:
     if 'Project to Axis Planes' in bpy.data.node_groups:
