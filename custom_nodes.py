@@ -8,6 +8,7 @@ from bpy.types import (
     ShaderNodeObjectInfo,
     ShaderNodeMix,
     ShaderNodeMixRGB,
+    ShaderNodeMapRange,
     NodeSocketFloat,
     NodeSocketVector,
     NodeTreeInterfaceSocketInt,
@@ -16,6 +17,8 @@ from bpy.types import (
     Node,
     ShaderNodeTree,
 )
+
+from . import arrange
 
 def uv_degradation() -> None:
     if 'UV Degradation' in bpy.data.node_groups:
@@ -50,12 +53,6 @@ def uv_degradation() -> None:
 
     object_info = new_node(group, ShaderNodeObjectInfo)
 
-    # levels_gt_1 = levels > 1
-    levels_gt_1 = new_math(group, 'GREATER_THAN', 'Levels > 1')
-    group.links.new(input.outputs['Levels'], levels_gt_1.inputs[0])
-    assert isinstance(levels_gt_1.inputs[1], NodeSocketFloat)
-    levels_gt_1.inputs[1].default_value = 1
-
     # step_1 = rand() * Levels
     step_1 = new_math(group, 'MULTIPLY')
     group.links.new(object_info.outputs['Random'], step_1.inputs[0])
@@ -71,38 +68,26 @@ def uv_degradation() -> None:
     assert isinstance(step_3.inputs[1], NodeSocketFloat)
     step_3.inputs[1].default_value = 1
 
-    # step_4 = clamp(step_2 / step_3, 0, 1)
-    step_4 = new_math(group, 'DIVIDE')
-    step_4.use_clamp = True
-    group.links.new(step_2.outputs[0], step_4.inputs[0])
-    group.links.new(step_3.outputs[0], step_4.inputs[1])
+    # t = clamp(step_2 / step_3, 0, 1)
+    # the blender math node uses safe division, so if Levels = 1, t = 0 with no error
+    t = new_math(group, 'DIVIDE', 't')
+    t.use_clamp = True
+    group.links.new(step_2.outputs[0], t.inputs[0])
+    group.links.new(step_3.outputs[0], t.inputs[1])
 
-    # t = step_4 if levels > 1 else 0
-    t = new_node(group, ShaderNodeMix, 't')
-    t.data_type = 'FLOAT'
-    group.links.new(levels_gt_1.outputs[0], t.inputs['Factor'])
-    assert isinstance(t.inputs['A'], NodeSocketFloat)
-    t.inputs['A'].default_value = 0.0
-    group.links.new(step_4.outputs[0], t.inputs['B'])
-
-    # ratio_range = MaxColorRatio - MinColorRatio
-    ratio_range = new_math(group, 'SUBTRACT', 'ratio_range')
-    group.links.new(input.outputs['MaxColorRatio'], ratio_range.inputs[0])
-    group.links.new(input.outputs['MinColorRatio'], ratio_range.inputs[1])
-
-    # ratio = t * ratio_range + MinColorRatio
-    ratio = new_math(group, 'MULTIPLY_ADD', 'ratio')
-    group.links.new(t.outputs[0], ratio.inputs[0])
-    group.links.new(ratio_range.outputs[0], ratio.inputs[1])
-    group.links.new(input.outputs['MinColorRatio'], ratio.inputs[2])
-
-    # color_t = ratio * Strength
+    # color_ratio = map_range(t, 0:1, MinColorRatio:MaxColorRatio)
+    color_ratio = new_node(group, ShaderNodeMapRange, 'ColorRatio')
+    color_ratio.clamp = False
+    group.links.new(t.outputs[0], color_ratio.inputs['Value'])
+    group.links.new(input.outputs['MinColorRatio'], color_ratio.inputs['To Min'])
+    group.links.new(input.outputs['MaxColorRatio'], color_ratio.inputs['To Max'])
+    
+    # color_t = color_ratio * Strength
     color_t = new_math(group, 'MULTIPLY', 'color_t')
-    group.links.new(ratio.outputs[0], color_t.inputs[0])
+    group.links.new(color_ratio.outputs[0], color_t.inputs[0])
     group.links.new(input.outputs['Strength'], color_t.inputs[1])
 
-    # a second node just for tidiness purposes
-    input2 = new_node(group, NodeGroupInput)
+    input2 = new_node(group, NodeGroupInput, 'Group Input (Ranges)')
 
     # out_color = interp(from_color, to_color, color_t)
     out_color = new_node(group, ShaderNodeMix, 'OutColor')
@@ -111,23 +96,19 @@ def uv_degradation() -> None:
     group.links.new(input2.outputs['FromColor'], out_color.inputs['A'])
     group.links.new(input2.outputs['ToColor'], out_color.inputs['B'])
 
-    # roughness_range = MaxRoughness - MinRoughness
-    roughness_range = new_math(group, 'SUBTRACT', 'roughness_range')
-    group.links.new(input2.outputs['MaxRoughness'], roughness_range.inputs[0])
-    group.links.new(input2.outputs['MinRoughness'], roughness_range.inputs[1])
-
     # t_strength = t * strength
     t_strength = new_math(group, 'MULTIPLY', 't * Strength')
     group.links.new(t.outputs[0], t_strength.inputs[0])
     group.links.new(input.outputs['Strength'], t_strength.inputs[1])
 
-    # out_roughness = t_strength * roughness_range + MinRoughness
-    out_roughness = new_math(group, 'MULTIPLY_ADD', 'OutRoughness')
-    group.links.new(t_strength.outputs[0], out_roughness.inputs[0])
-    group.links.new(roughness_range.outputs[0], out_roughness.inputs[1])
-    group.links.new(input.outputs['MinRoughness'], out_roughness.inputs[2])
+    # out_roughness = map_range(t_strength, 0:1, MinRoughness:MaxRoughness)
+    out_roughness = new_node(group, ShaderNodeMapRange, 'OutRoughness')
+    out_roughness.clamp = False
+    group.links.new(t_strength.outputs[0], out_roughness.inputs['Value'])
+    group.links.new(input2.outputs['MinRoughness'], out_roughness.inputs['To Min'])
+    group.links.new(input2.outputs['MaxRoughness'], out_roughness.inputs['To Max'])
 
-    input3 = new_node(group, NodeGroupInput)
+    input3 = new_node(group, NodeGroupInput, 'Group Input (Toggles)')
 
     toggle_out_color = new_node(group, ShaderNodeMix, 'Color Toggle')
     toggle_out_color.data_type = 'RGBA'
@@ -143,6 +124,8 @@ def uv_degradation() -> None:
 
     group.links.new(toggle_out_color.outputs['Result'], output.inputs['OutColor'])
     group.links.new(toggle_out_roughness.outputs['Result'], output.inputs['OutRoughness'])
+
+    arrange.nodes_iterate(group)
 
 
 def project_to_axis_planes() -> None:
@@ -209,6 +192,8 @@ def project_to_axis_planes() -> None:
     group.links.new(yzx.outputs[0], elif_facing_x.inputs['B'])
 
     group.links.new(if_facing_y.outputs['Result'], output.inputs[0])
+
+    arrange.nodes_iterate(group)
 
 N = TypeVar('N', bound=Node)
 
