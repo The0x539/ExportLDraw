@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<eyesight>
+  <group name="UV Degradation">
+    <shader>
+      <group_input name="Group Input" />
+
+      <object_info name="Object Info" />
+
+      <math name="step 1" type="multiply" />
+      <connect from_node="Object Info" from_socket="Random" to_node="step 1" to_socket="Value1" />
+      <connect from_node="Group Input" from_socket="Levels" to_node="step 1" to_socket="Value2" />
+
+      <math name="step 2" type="floor" />
+      <connect from_node="step 1" from_socket="Value" to_node="step 2" to_socket="Value" />
+
+      <math name="step 3" type="subtract">
+        <input name="Value2" type="float" value="1.0" />
+      </math>
+      <connect from_node="Group Input" from_socket="Levels" to_node="step 3" to_socket="Value1" />
+
+      <math name="t" type="divide" use_clamp="True" />
+      <connect from_node="step 2" from_socket="Value" to_node="t" to_socket="Value1" />
+      <connect from_node="step 3" from_socket="Value" to_node="t" to_socket="Value2" />
+
+      <group_input name="Group Input (Strength)" />
+
+      <map_range name="ColorRatio" clamp="False" />
+      <connect from_node="t" from_socket="Value" to_node="ColorRatio" to_socket="Value" />
+      <connect from_node="Group Input (Strength)" from_socket="MinColorRatio" to_node="ColorRatio" to_socket="To Min" />
+      <connect from_node="Group Input (Strength)" from_socket="MaxColorRatio" to_node="ColorRatio" to_socket="To Max" />
+
+      <math name="color_t" type="multiply" />
+      <connect from_node="ColorRatio" from_socket="Value" to_node="color_t" to_socket="Value1" />
+      <connect from_node="Group Input (Strength)" from_socket="Strength" to_node="color_t" to_socket="Value2" />
+
+      <math name="t_strength" type="multiply" />
+      <connect from_node="t" from_socket="Value" to_node="t_strength" to_socket="Value1" />
+      <connect from_node="Group Input (Strength)" from_socket="Strength" to_node="t_strength" to_socket="Value2" />
+
+      <group_input name="Group Input (Ranges)" />
+
+      <mix name="OutColor" />
+      <connect from_node="color_t" from_socket="Value" to_node="OutColor" to_socket="Fac" />
+      <connect from_node="Group Input (Ranges)" from_socket="FromColor" to_node="OutColor" to_socket="Color1" />
+      <connect from_node="Group Input (Ranges)" from_socket="ToColor" to_node="OutColor" to_socket="Color2" />
+
+      <map_range name="OutRoughness" clamp="False" />
+      <connect from_node="t_strength" from_socket="Value" to_node="OutRoughness" to_socket="Value" />
+      <connect from_node="Group Input (Ranges)" from_socket="MinRoughness" to_node="OutRoughness" to_socket="To Min" />
+      <connect from_node="Group Input (Ranges)" from_socket="MaxRoughness" to_node="OutRoughness" to_socket="To Max" />
+
+      <group_input name="Group Input (Toggles)" />
+
+      <mix name="Color Toggle" />
+      <connect from_node="Group Input (Toggles)" from_socket="enable" to_node="Color Toggle" to_socket="Fac" />
+      <connect from_node="Group Input (Toggles)" from_socket="FromColor" to_node="Color Toggle" to_socket="Color1" />
+      <connect from_node="OutColor" from_socket="Value" to_node="Color Toggle" to_socket="Color2" />
+
+      <mix_value name="Roughness Toggle" />
+      <connect from_node="Group Input (Toggles)" from_socket="enable" to_node="Roughness Toggle" to_socket="Factor" />
+      <connect from_node="Group Input (Toggles)" from_socket="MinRoughness" to_node="Roughness Toggle" to_socket="A" />
+      <connect from_node="OutRoughness" from_socket="Value" to_node="Roughness Toggle" to_socket="B" />
+
+      <group_output name="Group Output" />
+  
+      <connect from_node="Color Toggle" from_socket="Value" to_node="Group Output" to_socket="OutColor" />
+      <connect from_node="Roughness Toggle" from_socket="Value" to_node="Group Output" to_socket="OutRoughness" />
+    </shader>
+  </group>
+</eyesight>

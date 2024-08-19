@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<eyesight>
+  <group name="Project to Axis Planes">
+    <shader>
+      <group_input name="Group Input" />
+
+      <texture_coordinate name="TexCoord" />
+
+      <separate_xyz name="Split Normal" />
+      <connect from_node="TexCoord" from_socket="Normal" to_node="Split Normal" to_socket="Vector" />
+
+      <math name="Abs(X)" type="absolute" />
+      <connect from_node="Split Normal" from_socket="X" to_node="Abs(X)" to_socket="Value" />
+
+      <math name="Abs(Y)" type="absolute" />
+      <connect from_node="Split Normal" from_socket="Y" to_node="Abs(Y)" to_socket="Value" />
+
+      <math name="Facing X" type="greater_than">
+        <input name="Value2" type="float" value="0.5" />
+      </math>
+      <connect from_node="Abs(X)" from_socket="Value" to_node="Facing X" to_socket="Value1" />
+
+      <math name="Facing Y" type="greater_than">
+        <input name="Value2" type="float" value="0.5" />
+      </math>
+      <connect from_node="Abs(Y)" from_socket="Value" to_node="Facing Y" to_socket="Value1" />
+
+      <separate_xyz name="Split Position" />
+      <connect from_node="Group Input" from_socket="In" to_node="Split Position" to_socket="Vector" />
+
+      <combine_xyz name="XZY" />
+      <connect from_node="Split Position" from_socket="X" to_node="XZY" to_socket="X" />
+      <connect from_node="Split Position" from_socket="Z" to_node="XZY" to_socket="Y" />
+      <connect from_node="Split Position" from_socket="Y" to_node="XZY" to_socket="Z" />
+
+      <combine_xyz name="YZX" />
+      <connect from_node="Split Position" from_socket="Y" to_node="YZX" to_socket="X" />
+      <connect from_node="Split Position" from_socket="Z" to_node="YZX" to_socket="Y" />
+      <connect from_node="Split Position" from_socket="X" to_node="YZX" to_socket="Z" />
+    
+      <mix name="if facing Y" />
+      <mix name="elseif facing X" />
+
+      <connect from_node="Facing Y" from_socket="Value" to_node="if facing Y" to_socket="Fac" />
+      <connect from_node="XZY" from_socket="Vector" to_node="if facing Y" to_socket="Color2" />
+      <connect from_node="elseif facing X" from_socket="Value" to_node="if facing Y" to_socket="Color1" />
+
+      <connect from_node="Facing X" from_socket="Value" to_node="elseif facing X" to_socket="Fac" />
+      <connect from_node="YZX" from_socket="Vector" to_node="elseif facing X" to_socket="Color2" />
+      <connect from_node="Group Input" from_socket="In" to_node="elseif facing X" to_socket="Color1" />
+
+      <group_output name="Group Output" />
+
+      <connect from_node="if facing Y" from_socket="Value" to_node="Group Output" to_socket="Out" />
+    </shader>
+  </group>
+</eyesight>

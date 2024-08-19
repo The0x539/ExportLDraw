@@ -29,6 +29,8 @@ from bpy.types import (
     ShaderNodeMix,
     ShaderNodeMixRGB,
     ShaderNodeBump,
+    ShaderNodeSeparateXYZ,
+    ShaderNodeCombineXYZ,
     NodeSocketVector,
     NodeSocketFloat,
     NodeSocketColor,
@@ -93,6 +95,9 @@ node_types = {
     'group_output': 'NodeGroupOutput',
     'group': 'ShaderNodeGroup',
 
+    'separate_xyz': 'ShaderNodeSeparateXYZ',
+    'combine_xyz': 'ShaderNodeCombineXYZ',
+
     'add_closure': 'ShaderNodeAddShader',
     'emission': 'ShaderNodeEmission',
     'texture_coordinate': 'ShaderNodeTexCoord',
@@ -101,6 +106,7 @@ node_types = {
     'rounding_edge_normal': 'ShaderNodeBevel',
     'math': 'ShaderNodeMath',
     'mapping': 'ShaderNodeMapping',
+    'map_range': 'ShaderNodeMapRange',
     'rgb_ramp': 'ShaderNodeValToRGB',
     'object_info': 'ShaderNodeObjectInfo',
     'diffuse_bsdf': 'ShaderNodeBsdfDiffuse',
@@ -199,8 +205,8 @@ def load_xml(filepath: str) -> None:
     process_xml(tree.getroot(), os.path.dirname(filepath))
 
 def process_xml(root: ET.Element, dir: str) -> None:
-    custom_nodes.uv_degradation()
-    custom_nodes.project_to_axis_planes()
+    # custom_nodes.uv_degradation()
+    # custom_nodes.project_to_axis_planes()
     
     for thing in root:
         if thing.tag == 'material':
@@ -334,7 +340,8 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
 
     elif isinstance(node, ShaderNodeMath):
         node.operation = cast(Any, elem.attrib['type'].upper())
-        node.use_clamp = bool(elem.attrib['use_clamp'])
+        if use_clamp := elem.get('use_clamp'):
+            node.use_clamp = bool(use_clamp)
 
     elif isinstance(node, ShaderNodeVectorMath):
         if elem.tag == 'project_to_axis_plane':
@@ -498,6 +505,8 @@ def process_connect(group: ShaderNodeTree, elem: ET.Element) -> None:
             # a group with connections directly from its input to its output,
             # such that datatypes can only be inferred later when the group is used by a larger node graph
             socket_type = passthroughs[from_socket_name]
+        elif from_socket_name == 'enable':
+            socket_type = 'NodeSocketBool'
         else:
             to_socket = get_input(to_node, to_socket_name)
             socket_type = to_socket.bl_idname.replace('FloatFactor', 'Float')
