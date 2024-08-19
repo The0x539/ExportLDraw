@@ -42,7 +42,6 @@ from bpy.types import (
     ShaderNodeLayerWeight,
     ShaderNodeTexImage,
     ShaderNodeMix,
-    ShaderNodeMixRGB,
     ShaderNodeBump,
     ShaderNodeSeparateXYZ,
     ShaderNodeCombineXYZ,
@@ -61,30 +60,6 @@ from bpy.types import (
     NodeTree,
 )
 
-blender4_renames = {
-    'Subsurface': 'Subsurface Weight',
-    'Clearcoat': 'Coat Weight',
-    'ClearcoatRoughness': 'Coat Roughness',
-    'Clearcoat Roughness': 'Coat Roughness',
-    'ClearcoatNormal': 'Coat Normal',
-    'Clearcoat Normal': 'Coat Normal',
-    'Transmission': 'Transmission Weight',
-    'Sheen': 'Sheen Weight',
-    'SheenTint': 'Sheen Tint',
-    'Specular': 'Specular IOR Level',
-    'SpecularTint': 'Specular Tint',
-    'AnisotropicRotation': 'Anisotropic Rotation',
-    'SubsurfaceRadius': 'Subsurface Radius',
-    'Fac': 'Factor',
-
-    # Not sure these are accurate.
-    'TransmissionRoughness': 'Roughness',
-    'Transmission Roughness': 'Roughness',
-    'SubsurfaceColor': 'Subsurface Radius',
-    'BaseColor': 'Base Color',
-    'Color': 'Base Color',
-}
-
 node_types = {
     'value': ShaderNodeValue,
     'color': ShaderNodeRGB,
@@ -95,7 +70,7 @@ node_types = {
     'transparent_bsdf': ShaderNodeBsdfTransparent,
 
     'mix_value': ShaderNodeMix,
-    'mix': ShaderNodeMixRGB,
+    'mix': ShaderNodeMix,
     'mix_closure': ShaderNodeMixShader,
 
     # In modern blender, mix can act as switch when the input is boolean
@@ -157,64 +132,113 @@ custom_node_groups = {
     'project_to_axis_plane': 'Project to Axis Planes',
 }
 
-def get_input(node: Node, key: str) -> NodeSocket:
-    i = node.inputs.find(key)
-    if i >= 0:
-        return node.inputs[i]
-
-    if key in blender4_renames:
-        key = blender4_renames[key]
-
-    if key == 'Size' and isinstance(node, ShaderNodeBevel):
-        key = 'Radius'
-
-    i = node.inputs.find(key)
-    if i >= 0:
-        return node.inputs[i]
-    
-    desperation: dict[str, Any] = {
+input_aliases: dict[Type[Node], dict[str, str | int]] = {
+    ShaderNodeBsdfPrincipled: {
+        '': '',
+    },
+    ShaderNodeMapRange: {
+        'Value': 'Result',
+    },
+    ShaderNodeBevel: {
+        'Size': 'Radius',
+    },
+    ShaderNodeMath: {
         'Value1': 0,
         'Value2': 1,
+    },
+    ShaderNodeMix: {
+        'Fac': 'Factor',
+    },
+    ShaderNodeVectorMath: {
         'Vector1': 0,
         'Vector2': 1,
-        'Value': 0,
-    }
+    },
+    ShaderNodeBsdfPrincipled: {
+        'Subsurface': 'Subsurface Weight',
+        'Clearcoat': 'Coat Weight',
+        'ClearcoatRoughness': 'Coat Roughness',
+        'Clearcoat Roughness': 'Coat Roughness',
+        'ClearcoatNormal': 'Coat Normal',
+        'Clearcoat Normal': 'Coat Normal',
+        'Transmission': 'Transmission Weight',
+        'Sheen': 'Sheen Weight',
+        'SheenTint': 'Sheen Tint',
+        'Specular': 'Specular IOR Level',
+        'SpecularTint': 'Specular Tint',
+        'AnisotropicRotation': 'Anisotropic Rotation',
+        'SubsurfaceRadius': 'Subsurface Radius',
 
-    if key in desperation and desperation[key] < len(node.inputs):
-        return node.inputs[desperation[key]]
-    else:
-        print('could not find input', key)
-        print('in', ', '.join(node.inputs.keys()))
-        print('for', node)
-        raise KeyError(key)
+        # # Not sure these are accurate.
+        'TransmissionRoughness': 'Roughness',
+        'Transmission Roughness': 'Roughness',
+        'SubsurfaceColor': 'Subsurface Radius',
+        'BaseColor': 'Base Color',
+        'Color': 'Base Color',
+    }
+}
+
+output_aliases: dict[Type[Node], dict[str, str | int]] = {
+    ShaderNodeMix: {
+        'Value': 'Result',
+        'ValueOut': 'Result',
+        'Color': 'Result',
+    },
+    ShaderNodeTexVoronoi: {
+        'Fac': 'Distance', # TODO: Or 'Position'?
+    },
+}
+
+def get_input(node: Node, key: str) -> NodeSocket:
+    candidates: list[str | int] = [key]
+
+    if aliases := input_aliases.get(type(node)):
+        if key in aliases:
+            candidates.append(aliases[key])
+
+    for k in candidates:
+        if isinstance(k, int) and k < len(node.inputs):
+            return node.inputs[k]
+        elif k in node.inputs.keys():
+            try:
+                return node.inputs[k]
+            except:
+                pass
+        else:
+            i = node.inputs.find(key)
+            if i >= 0:
+                return node.inputs[i]
+
+    print('could not find input', key)
+    print('in', ', '.join(node.inputs.keys()))
+    print('for', node)
+    print('tried', candidates)
+    raise KeyError(key)
 
 def get_output(node: Node, key: str) -> NodeSocket:
-    i = node.outputs.find(key)
-    if i >= 0:
-        return node.outputs[i]
+    candidates: list[str | int] = [key]
 
-    if key in blender4_renames:
-        key = blender4_renames[key]
+    if aliases := output_aliases.get(type(node)):
+        if key in aliases:
+            candidates.append(aliases[key])
 
-    if key == 'Factor' and isinstance(node, ShaderNodeTexVoronoi):
-        key = 'Distance' # TODO: or 'Position'?
+    for k in candidates:
+        if isinstance(k, int) and k < len(node.outputs):
+            return node.outputs[k]
+        elif k in node.outputs.keys():
+            try:
+                return node.outputs[k]
+            except:
+                pass
+        else:
+            i = node.outputs.find(key)
+            if i >= 0:
+                return node.outputs[i]
 
-    i = node.outputs.find(key)
-    if i >= 0:
-        return node.outputs[i]
-    
-    desperation: dict[str, Any] = {
-        'Value': 0,
-        'ValueOut': 0,
-    }
-
-    if key in desperation and desperation[key] < len(node.outputs):
-        return node.outputs[desperation[key]]
-    else:
-        print('could not find output', key)
-        print('in', ', '.join(node.outputs.keys()))
-        print('for', node)
-        raise KeyError(key)
+    print('could not find output', key)
+    print('in', ', '.join(node.outputs.keys()))
+    print('for', node)
+    print('tried', candidates)
+    raise KeyError(key)
 
 def load_xml(filepath: str) -> None:
     tree = ET.parse(filepath)
@@ -321,22 +345,20 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
 
     elif isinstance(node, ShaderNodeMix):
         if elem.tag == 'switch_float':
-            node.inputs['A'].name = 'ValueDisable'
-            node.inputs['B'].name = 'ValueEnable'
-        else:
-            node.inputs['A'].name = 'Value1'
-            node.inputs['B'].name = 'Value2'
+            node.inputs[2].name = 'ValueDisable'
+            node.inputs[3].name = 'ValueEnable'
+        elif elem.tag == 'mix_value':
+            node.inputs[2].name = 'Value1'
+            node.inputs[3].name = 'Value2'
+        elif elem.tag == 'mix':
+            node.data_type = 'RGBA'
+            node.inputs[6].name ='Color1'
+            node.inputs[7].name ='Color2'
 
         if blend_type := elem.get('type'):
             node.blend_type = cast(Any, blend_type.upper())
         if use_clamp := elem.get('use_clamp'):
             node.clamp_factor = node.clamp_result = bool(use_clamp)
-
-    elif isinstance(node, ShaderNodeMixRGB):
-        if blend_type := elem.get('type'):
-            node.blend_type = cast(Any, blend_type.upper())
-        if use_clamp := elem.get('use_clamp'):
-            node.use_clamp = bool(use_clamp)
 
     elif isinstance(node, ShaderNodeBump):
         if enable := elem.get('enable'):

@@ -43,7 +43,7 @@
 
       <connect from_node="Facing Y" from_socket="Value" to_node="if facing Y" to_socket="Fac" />
       <connect from_node="XZY" from_socket="Vector" to_node="if facing Y" to_socket="Color2" />
-      <connect from_node="elseif facing X" from_socket="Value" to_node="if facing Y" to_socket="Color1" />
+      <connect from_node="elseif facing X" from_socket="Result" to_node="if facing Y" to_socket="Color1" />
 
       <connect from_node="Facing X" from_socket="Value" to_node="elseif facing X" to_socket="Fac" />
       <connect from_node="YZX" from_socket="Vector" to_node="elseif facing X" to_socket="Color2" />
@@ -51,7 +51,7 @@
 
       <group_output name="Group Output" />
 
-      <connect from_node="if facing Y" from_socket="Value" to_node="Group Output" to_socket="Out" />
+      <connect from_node="if facing Y" from_socket="Result" to_node="Group Output" to_socket="Out" />
     </shader>
   </group>
 </eyesight>

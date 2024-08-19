@@ -30,7 +30,7 @@
       <connect from_node="Group Input (Strength)" from_socket="MaxColorRatio" to_node="ColorRatio" to_socket="To Max" />
 
       <math name="color_t" type="multiply" />
-      <connect from_node="ColorRatio" from_socket="Value" to_node="color_t" to_socket="Value1" />
+      <connect from_node="ColorRatio" from_socket="Result" to_node="color_t" to_socket="Value1" />
       <connect from_node="Group Input (Strength)" from_socket="Strength" to_node="color_t" to_socket="Value2" />
 
       <math name="t_strength" type="multiply" />
@@ -54,17 +54,17 @@
       <mix name="Color Toggle" />
       <connect from_node="Group Input (Toggles)" from_socket="enable" to_node="Color Toggle" to_socket="Fac" />
       <connect from_node="Group Input (Toggles)" from_socket="FromColor" to_node="Color Toggle" to_socket="Color1" />
-      <connect from_node="OutColor" from_socket="Value" to_node="Color Toggle" to_socket="Color2" />
+      <connect from_node="OutColor" from_socket="Result" to_node="Color Toggle" to_socket="Color2" />
 
       <mix_value name="Roughness Toggle" />
       <connect from_node="Group Input (Toggles)" from_socket="enable" to_node="Roughness Toggle" to_socket="Factor" />
-      <connect from_node="Group Input (Toggles)" from_socket="MinRoughness" to_node="Roughness Toggle" to_socket="A" />
-      <connect from_node="OutRoughness" from_socket="Value" to_node="Roughness Toggle" to_socket="B" />
+      <connect from_node="Group Input (Toggles)" from_socket="MinRoughness" to_node="Roughness Toggle" to_socket="Value1" />
+      <connect from_node="OutRoughness" from_socket="Result" to_node="Roughness Toggle" to_socket="Value2" />
 
       <group_output name="Group Output" />
   
-      <connect from_node="Color Toggle" from_socket="Value" to_node="Group Output" to_socket="OutColor" />
-      <connect from_node="Roughness Toggle" from_socket="Value" to_node="Group Output" to_socket="OutRoughness" />
+      <connect from_node="Color Toggle" from_socket="Result" to_node="Group Output" to_socket="OutColor" />
+      <connect from_node="Roughness Toggle" from_socket="Result" to_node="Group Output" to_socket="OutRoughness" />
     </shader>
   </group>
 </eyesight>
