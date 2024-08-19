@@ -3,7 +3,7 @@ import itertools
 import os.path
 
 from xml.etree import ElementTree as ET
-from typing import Iterable, Literal, Any, cast
+from typing import Iterable, Literal, Any, cast, Type
 from mathutils import Color, Vector
 
 from . import custom_nodes
@@ -25,6 +25,21 @@ from bpy.types import (
     ShaderNodeRGBCurve,
     ShaderNodeBsdfPrincipled,
     ShaderNodeBsdfAnisotropic,
+    ShaderNodeBsdfTranslucent,
+    ShaderNodeBsdfTransparent,
+    ShaderNodeTexNoise,
+    ShaderNodeEmission,
+    ShaderNodeTexCoord,
+    ShaderNodeMapping,
+    ShaderNodeMapRange,
+    ShaderNodeObjectInfo,
+    ShaderNodeBsdfDiffuse,
+    ShaderNodeNormalMap,
+    ShaderNodeBrightContrast,
+    ShaderNodeUVMap,
+    ShaderNodeNewGeometry,
+    ShaderNodeVolumeAbsorption,
+    ShaderNodeLayerWeight,
     ShaderNodeTexImage,
     ShaderNodeMix,
     ShaderNodeMixRGB,
@@ -37,6 +52,7 @@ from bpy.types import (
     NodeSocketFloatFactor,
     NodeSocketInt,
     NodeSocketBool,
+    NodeSocketShader,
     NodeGroupInput,
     NodeGroupOutput,
     Node,
@@ -70,70 +86,70 @@ blender4_renames = {
 }
 
 node_types = {
-    'value': 'ShaderNodeValue',
-    'color': 'ShaderNodeRGB',
-    'vector': 'ShaderNodeRGB', # TODO: Custom node group with a three-number panel or whatever
+    'value': ShaderNodeValue,
+    'color': ShaderNodeRGB,
+    'vector': ShaderNodeRGB, # TODO: Custom node group with a three-number panel or whatever
 
-    'translucent_bsdf': 'ShaderNodeBsdfTranslucent',
-    'principled_bsdf': 'ShaderNodeBsdfPrincipled',
-    'transparent_bsdf': 'ShaderNodeBsdfTransparent',
+    'translucent_bsdf': ShaderNodeBsdfTranslucent,
+    'principled_bsdf': ShaderNodeBsdfPrincipled,
+    'transparent_bsdf': ShaderNodeBsdfTransparent,
 
-    'mix_value': 'ShaderNodeMix',
-    'mix': 'ShaderNodeMixRGB',
-    'mix_closure': 'ShaderNodeMixShader',
+    'mix_value': ShaderNodeMix,
+    'mix': ShaderNodeMixRGB,
+    'mix_closure': ShaderNodeMixShader,
 
     # In modern blender, mix can act as switch when the input is boolean
-    'switch_float': 'ShaderNodeMix',
-    'switch_closure': 'ShaderNodeMixShader', 
-    'glossy_bsdf': 'ShaderNodeBsdfAnisotropic', # unsure
+    'switch_float': ShaderNodeMix,
+    'switch_closure': ShaderNodeMixShader, 
+    'glossy_bsdf': ShaderNodeBsdfAnisotropic, # unsure
 
-    'noise_texture': 'ShaderNodeTexNoise',
-    'image_texture': 'ShaderNodeTexImage',
-    'voronoi_texture': 'ShaderNodeTexVoronoi',
+    'noise_texture': ShaderNodeTexNoise,
+    'image_texture': ShaderNodeTexImage,
+    'voronoi_texture': ShaderNodeTexVoronoi,
 
-    'group_input': 'NodeGroupInput',
-    'group_output': 'NodeGroupOutput',
-    'group': 'ShaderNodeGroup',
+    'group_input': NodeGroupInput,
+    'group_output': NodeGroupOutput,
+    'group': ShaderNodeGroup,
 
-    'separate_xyz': 'ShaderNodeSeparateXYZ',
-    'combine_xyz': 'ShaderNodeCombineXYZ',
+    'separate_xyz': ShaderNodeSeparateXYZ,
+    'combine_xyz': ShaderNodeCombineXYZ,
 
-    'add_closure': 'ShaderNodeAddShader',
-    'emission': 'ShaderNodeEmission',
-    'texture_coordinate': 'ShaderNodeTexCoord',
-    'vector_transform': 'ShaderNodeVectorTransform',
-    'bump': 'ShaderNodeBump',
-    'rounding_edge_normal': 'ShaderNodeBevel',
-    'math': 'ShaderNodeMath',
-    'mapping': 'ShaderNodeMapping',
-    'map_range': 'ShaderNodeMapRange',
-    'rgb_ramp': 'ShaderNodeValToRGB',
-    'object_info': 'ShaderNodeObjectInfo',
-    'diffuse_bsdf': 'ShaderNodeBsdfDiffuse',
-    'normal_map': 'ShaderNodeNormalMap',
-    'vector_math': 'ShaderNodeVectorMath',
-    'brightness_contrast': 'ShaderNodeBrightContrast',
-    'uvmap': 'ShaderNodeUVMap',
-    'rgb_curves': 'ShaderNodeRGBCurve',
-    'geometry': 'ShaderNodeNewGeometry',
-    'absorption_volume': 'ShaderNodeVolumeAbsorption',
-    'layer_weight': 'ShaderNodeLayerWeight',
+    'add_closure': ShaderNodeAddShader,
+    'emission': ShaderNodeEmission,
+    'texture_coordinate': ShaderNodeTexCoord,
+    'vector_transform': ShaderNodeVectorTransform,
+    'bump': ShaderNodeBump,
+    'rounding_edge_normal': ShaderNodeBevel,
+    'math': ShaderNodeMath,
+    'mapping': ShaderNodeMapping,
+    'map_range': ShaderNodeMapRange,
+    'rgb_ramp': ShaderNodeValToRGB,
+    'object_info': ShaderNodeObjectInfo,
+    'diffuse_bsdf': ShaderNodeBsdfDiffuse,
+    'normal_map': ShaderNodeNormalMap,
+    'vector_math': ShaderNodeVectorMath,
+    'brightness_contrast': ShaderNodeBrightContrast,
+    'uvmap': ShaderNodeUVMap,
+    'rgb_curves': ShaderNodeRGBCurve,
+    'geometry': ShaderNodeNewGeometry,
+    'absorption_volume': ShaderNodeVolumeAbsorption,
+    'layer_weight': ShaderNodeLayerWeight,
 }
 
-socket_types = {
-    'color': 'NodeSocketColor',
-    'closure': 'NodeSocketShader',
-    'vector': 'NodeSocketVector',
-    'float': 'NodeSocketFloat',
-    'int': 'NodeSocketInt',
-    'boolean': 'NodeSocketBool',
+socket_types: dict[str, Type[NodeSocket]] = {
+    'color': NodeSocketColor,
+    'closure': NodeSocketShader,
+    'vector': NodeSocketVector,
+    'float': NodeSocketFloat,
+    'int': NodeSocketInt,
+    'boolean': NodeSocketBool,
 }
 
 passthroughs = {
-    'Levels': 'NodeSocketInt',
-    'MinColorRatio': 'NodeSocketFloat',
-    'MaxColorRatio': 'NodeSocketFloat',
-    'enable': 'NodeSocketBool',
+    'Levels': NodeSocketInt,
+    'MinColorRatio': NodeSocketFloat,
+    'MaxColorRatio': NodeSocketFloat,
+    'enable': NodeSocketBool,
 }
 
 custom_node_groups = {
@@ -278,7 +294,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         except KeyError:
             print(elem)
             return
-        node = group.nodes.new(node_type)
+        node = group.nodes.new(node_type.__name__)
 
     node.name = elem.get('name', '')
     node.label = node.name
@@ -483,13 +499,13 @@ def process_group_node(group: ShaderNodeTree, elem: ET.Element) -> None:
             weird_scenario = (
                 (group_name, in_out, name) == ('SPECKLE-GROUP', 'INPUT', 'XOffset')
                 and
-                (socket.bl_socket_idname, socket_type) == ('NodeSocketFloat', 'NodeSocketColor')
+                (socket.bl_socket_idname, socket_type) == ('NodeSocketFloat', NodeSocketColor)
             )
-            assert socket.bl_socket_idname == socket_type or weird_scenario
+            assert socket.bl_socket_idname == socket_type.__name__ or weird_scenario
             break
         else:
-            print(f'missing socket: {group_name}::{in_out} / {name} {socket_type}')
-            subgroup.interface.new_socket(name, in_out=in_out, socket_type=socket_type)
+            print(f'missing socket: {group_name}::{in_out} / {name} {socket_type.__name__}')
+            subgroup.interface.new_socket(name, in_out=in_out, socket_type=socket_type.__name__)
 
     node.node_tree = bpy.data.node_groups[group_name] # type: ignore
 
@@ -500,24 +516,29 @@ def process_connect(group: ShaderNodeTree, elem: ET.Element) -> None:
     to_socket_name = elem.attrib['to_socket']
 
     if isinstance(from_node, NodeGroupInput) and from_node.outputs.find(from_socket_name) < 0:
+        socket_type: Type[NodeSocket]
         if isinstance(to_node, NodeGroupOutput):
             # awful hack for an awful piece of data
             # a group with connections directly from its input to its output,
             # such that datatypes can only be inferred later when the group is used by a larger node graph
             socket_type = passthroughs[from_socket_name]
         elif from_socket_name == 'enable':
-            socket_type = 'NodeSocketBool'
+            socket_type = NodeSocketBool
         else:
             to_socket = get_input(to_node, to_socket_name)
-            socket_type = to_socket.bl_idname.replace('FloatFactor', 'Float')
+            socket_type = type(to_socket)
 
-        group.interface.new_socket(name=from_socket_name, in_out='INPUT', socket_type=socket_type)
+        if socket_type is NodeSocketFloatFactor:
+            socket_type = NodeSocketFloat
+        group.interface.new_socket(name=from_socket_name, in_out='INPUT', socket_type=socket_type.__name__)
 
     from_socket = get_output(from_node, from_socket_name)
 
     if isinstance(to_node, NodeGroupOutput) and to_node.inputs.find(to_socket_name) < 0:
-        socket_type = from_socket.bl_idname.replace('FloatFactor', 'Float')
-        group.interface.new_socket(name=to_socket_name, in_out='OUTPUT', socket_type=socket_type)
+        socket_type = type(from_socket)
+        if socket_type is NodeSocketFloatFactor:
+            socket_type = NodeSocketFloat
+        group.interface.new_socket(name=to_socket_name, in_out='OUTPUT', socket_type=socket_type.__name__)
 
     to_socket = get_input(to_node, to_socket_name)
 
