@@ -1,6 +1,7 @@
 import bpy
 from typing import Any, cast, TypeVar, Type
 from bpy.types import (
+    ShaderNode,
     ShaderNodeMath,
     ShaderNodeSeparateXYZ,
     ShaderNodeTexCoord,
@@ -9,6 +10,8 @@ from bpy.types import (
     ShaderNodeMix,
     ShaderNodeMixRGB,
     ShaderNodeMapRange,
+    NodeSocket,
+    NodeFrame,
     NodeSocketFloat,
     NodeSocketVector,
     NodeTreeInterfaceSocketInt,
@@ -55,16 +58,18 @@ def uv_degradation() -> None:
 
     # step_1 = rand() * Levels
     step_1 = new_math(group, 'MULTIPLY')
-    group.links.new(object_info.outputs['Random'], step_1.inputs[0])
-    group.links.new(input.outputs['Levels'], step_1.inputs[1])
+    link(group, step_1, {
+        0: object_info.outputs['Random'],
+        1: input.outputs['Levels'],
+    })
 
     # step_2 = floor(step_1)
     step_2 = new_math(group, 'FLOOR')
-    group.links.new(step_1.outputs[0], step_2.inputs[0])
+    link(group, step_2, step_1.outputs[0])
 
     # step_3 = Levels - 1
     step_3 = new_math(group, 'SUBTRACT')
-    group.links.new(input.outputs['Levels'], step_3.inputs[0])
+    link(group, step_3, input.outputs['Levels'])
     assert isinstance(step_3.inputs[1], NodeSocketFloat)
     step_3.inputs[1].default_value = 1
 
@@ -72,55 +77,73 @@ def uv_degradation() -> None:
     # the blender math node uses safe division, so if Levels = 1, t = 0 with no error
     t = new_math(group, 'DIVIDE', 't')
     t.use_clamp = True
-    group.links.new(step_2.outputs[0], t.inputs[0])
-    group.links.new(step_3.outputs[0], t.inputs[1])
+    link(group, t, {
+        0: step_2.outputs[0],
+        1: step_3.outputs[0],
+    })
+
+    input2 = new_node(group, NodeGroupInput, 'Group Input (Strength)')
 
     # color_ratio = map_range(t, 0:1, MinColorRatio:MaxColorRatio)
     color_ratio = new_node(group, ShaderNodeMapRange, 'ColorRatio')
     color_ratio.clamp = False
-    group.links.new(t.outputs[0], color_ratio.inputs['Value'])
-    group.links.new(input.outputs['MinColorRatio'], color_ratio.inputs['To Min'])
-    group.links.new(input.outputs['MaxColorRatio'], color_ratio.inputs['To Max'])
+    link(group, color_ratio, {
+        'Value': t.outputs[0],
+        'To Min': input2.outputs['MinColorRatio'],
+        'To Max': input2.outputs['MaxColorRatio'],
+    })
     
     # color_t = color_ratio * Strength
     color_t = new_math(group, 'MULTIPLY', 'color_t')
-    group.links.new(color_ratio.outputs[0], color_t.inputs[0])
-    group.links.new(input.outputs['Strength'], color_t.inputs[1])
+    link(group, color_t, {
+        0: color_ratio.outputs[0],
+        1: input2.outputs['Strength'],
+    })
 
-    input2 = new_node(group, NodeGroupInput, 'Group Input (Ranges)')
+    # t_strength = t * strength
+    t_strength = new_math(group, 'MULTIPLY', 't * Strength')
+    link(group, t_strength, {
+        0: t.outputs[0],
+        1: input2.outputs['Strength'],
+    })
+
+    input3 = new_node(group, NodeGroupInput, 'Group Input (Ranges)')
 
     # out_color = interp(from_color, to_color, color_t)
     out_color = new_node(group, ShaderNodeMix, 'OutColor')
     out_color.data_type = 'RGBA'
-    group.links.new(color_t.outputs[0], out_color.inputs[0])
-    group.links.new(input2.outputs['FromColor'], out_color.inputs['A'])
-    group.links.new(input2.outputs['ToColor'], out_color.inputs['B'])
-
-    # t_strength = t * strength
-    t_strength = new_math(group, 'MULTIPLY', 't * Strength')
-    group.links.new(t.outputs[0], t_strength.inputs[0])
-    group.links.new(input.outputs['Strength'], t_strength.inputs[1])
+    link(group, out_color, {
+        0: color_t.outputs[0],
+        'A': input3.outputs['FromColor'],
+        'B': input3.outputs['ToColor'],
+    })
 
     # out_roughness = map_range(t_strength, 0:1, MinRoughness:MaxRoughness)
     out_roughness = new_node(group, ShaderNodeMapRange, 'OutRoughness')
     out_roughness.clamp = False
-    group.links.new(t_strength.outputs[0], out_roughness.inputs['Value'])
-    group.links.new(input2.outputs['MinRoughness'], out_roughness.inputs['To Min'])
-    group.links.new(input2.outputs['MaxRoughness'], out_roughness.inputs['To Max'])
+    link(group, out_roughness, {
+        'Value': t_strength.outputs[0],
+        'To Min': input3.outputs['MinRoughness'],
+        'To Max': input3.outputs['MaxRoughness'],
+    })
 
-    input3 = new_node(group, NodeGroupInput, 'Group Input (Toggles)')
+    input4 = new_node(group, NodeGroupInput, 'Group Input (Toggles)')
 
     toggle_out_color = new_node(group, ShaderNodeMix, 'Color Toggle')
     toggle_out_color.data_type = 'RGBA'
-    group.links.new(input3.outputs['enable'], toggle_out_color.inputs[0])
-    group.links.new(input3.outputs['FromColor'], toggle_out_color.inputs['A'])
-    group.links.new(out_color.outputs['Result'], toggle_out_color.inputs['B'])
+    link(group, toggle_out_color, {
+        0: input4.outputs['enable'],
+        'A': input4.outputs['FromColor'],
+        'B': out_color.outputs['Result'],
+    })
 
     toggle_out_roughness = new_node(group, ShaderNodeMix, 'Roughness Toggle')
     toggle_out_roughness.data_type = 'FLOAT'
-    group.links.new(input3.outputs['enable'], toggle_out_roughness.inputs[0])
-    group.links.new(input3.outputs['MinRoughness'], toggle_out_roughness.inputs['A'])
-    group.links.new(out_roughness.outputs[0], toggle_out_roughness.inputs['B'])
+    link(group, toggle_out_roughness, {
+        0: input4.outputs['enable'],
+        'A': input4.outputs['MinRoughness'],
+        'B': out_roughness.outputs[0],
+    })
 
     group.links.new(toggle_out_color.outputs['Result'], output.inputs['OutColor'])
     group.links.new(toggle_out_roughness.outputs['Result'], output.inputs['OutRoughness'])
@@ -144,38 +167,40 @@ def project_to_axis_planes() -> None:
     tex_coord = new_node(group, ShaderNodeTexCoord)
 
     split_normal = new_node(group, ShaderNodeSeparateXYZ, 'Split Normal')
-    group.links.new(tex_coord.outputs['Normal'], split_normal.inputs[0])
+    link(group, split_normal, tex_coord.outputs['Normal'])
 
     abs_x = new_math(group, 'ABSOLUTE', 'Abs(X)')
-    group.links.new(split_normal.outputs['X'], abs_x.inputs[0])
+    link(group, abs_x, split_normal.outputs['X'])
     
     abs_y = new_math(group, 'ABSOLUTE', 'Abs(Y)')
-    group.links.new(split_normal.outputs['Y'], abs_y.inputs[0])
+    link(group, abs_y, split_normal.outputs['Y'])
 
     facing_x = new_math(group, 'GREATER_THAN', 'Facing X')
-    group.links.new(abs_x.outputs[0], facing_x.inputs[0])
+    link(group, facing_x, abs_x.outputs[0])
     assert isinstance(facing_x.inputs[1], NodeSocketFloat)
     facing_x.inputs[1].default_value = 0.5
 
     facing_y = new_math(group, 'GREATER_THAN', 'Facing Y')
-    group.links.new(abs_y.outputs[0], facing_y.inputs[0])
+    link(group, facing_y, abs_y.outputs[0])
     assert isinstance(facing_y.inputs[1], NodeSocketFloat)
     facing_y.inputs[1].default_value = 0.5
 
     split_pos = new_node(group, ShaderNodeSeparateXYZ, 'Split Position')
-    group.links.new(input.outputs[0], split_pos.inputs[0])
-
-    [x, y, z] = split_pos.outputs
+    link(group, split_pos, input.outputs[0])
 
     xzy = new_node(group, ShaderNodeCombineXYZ, 'XZY')
-    group.links.new(x, xzy.inputs[0])
-    group.links.new(z, xzy.inputs[1])
-    group.links.new(y, xzy.inputs[2])
+    link(group, xzy, {
+        0: split_pos.outputs['X'],
+        1: split_pos.outputs['Z'],
+        2: split_pos.outputs['Y'],
+    })
 
     yzx = new_node(group, ShaderNodeCombineXYZ, 'YZX')
-    group.links.new(y, yzx.inputs[0])
-    group.links.new(z, yzx.inputs[1])
-    group.links.new(x, yzx.inputs[2])
+    link(group, yzx, {
+        0: split_pos.outputs['Y'],
+        1: split_pos.outputs['Z'],
+        2: split_pos.outputs['X'],
+    })
 
     if_facing_y = new_node(group, ShaderNodeMix, 'if facing Y')
     if_facing_y.data_type = 'VECTOR'
@@ -183,13 +208,17 @@ def project_to_axis_planes() -> None:
     elif_facing_x = new_node(group, ShaderNodeMix, 'elseif facing X')
     elif_facing_x.data_type = 'VECTOR'
 
-    group.links.new(facing_y.outputs[0], if_facing_y.inputs['Factor'])
-    group.links.new(elif_facing_x.outputs['Result'], if_facing_y.inputs['A'])
-    group.links.new(xzy.outputs[0], if_facing_y.inputs['B'])
+    link(group, if_facing_y, {
+        'Factor': facing_y.outputs[0],        # if facing y
+        'B': xzy.outputs[0],                  # then xzy
+        'A': elif_facing_x.outputs['Result'], # elif facing x...
+    })
 
-    group.links.new(facing_x.outputs[0], elif_facing_x.inputs['Factor'])
-    group.links.new(input.outputs[0], elif_facing_x.inputs['A'])
-    group.links.new(yzx.outputs[0], elif_facing_x.inputs['B'])
+    link(group, elif_facing_x, {
+        'Factor': facing_x.outputs[0], # if facing x
+        'B': yzx.outputs[0],           # then yzx
+        'A': input.outputs[0],         # else xyz
+    })
 
     group.links.new(if_facing_y.outputs['Result'], output.inputs[0])
 
@@ -208,3 +237,14 @@ def new_math(group: ShaderNodeTree, operation: Any, label: str | None = None) ->
     node = new_node(group, ShaderNodeMath, label)
     node.operation = operation
     return node
+
+def link(
+    group: ShaderNodeTree,
+    node: ShaderNode,
+    inputs: NodeSocket | dict[str | int, NodeSocket],
+):
+    if isinstance(inputs, NodeSocket):
+        group.links.new(inputs, node.inputs[0])
+    else:
+        for (dst, src) in inputs.items():
+            group.links.new(src, node.inputs[dst])
