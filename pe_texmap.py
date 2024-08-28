@@ -70,48 +70,55 @@ class PETexmap:
         # child_node is a 3 or 4 line
         _params = child_node.line.split()[2:]
 
-        pe_texmap = None
-        for p in ldraw_node.pe_tex_info:
+        if not ldraw_node.pe_tex_info:
+            return None
+        elif len(ldraw_node.pe_tex_info) > 1:
+            raise NotImplementedError()
+        else:
+            p = ldraw_node.pe_tex_info[0]
+
+        pe_texmap = PETexmap()
+        pe_texmap.texture = p.image
+
+        # # custom minifig head > 3626tex.dat (has no pe_tex) > 3626texpole.dat (has no uv data)
+        if len(_params) == 15:  # use uvs provided with polygon
+            n = len(child_node.vertices)
+            uv_params = _params[n * 3:]
+            for i in range(n):
+                x = round(float(uv_params[i * 2]), 3)
+                y = round(float(uv_params[i * 2 + 1]), 3)
+                uv = Vector((x, y))
+                pe_texmap.uvs.append(uv)
+
+            return pe_texmap
+
+        elif p.matrix_inverse:  # calculate uvs
             point_min = p.point_min or Vector((0, 0))
             point_max = p.point_max or Vector((1, 1))
             point_diff = p.point_diff or point_max - point_min
 
-            pe_texmap = PETexmap()
-            pe_texmap.texture = p.image
-
             p.init_with_target_part_matrix(ldraw_node.matrix)
 
-            m = p.matrix_inverse or Matrix.Identity(4)
-            vertices = [m @ v for v in child_node.vertices]
+            vertices = [p.matrix_inverse @ v for v in child_node.vertices]
 
-            # # custom minifig head > 3626tex.dat (has no pe_tex) > 3626texpole.dat (has no uv data)
-            if len(_params) == 15:  # use uvs provided in file
-                uv_params = _params[len(vertices) * 3:]
-                for i in range(len(vertices)):
-                    x = round(float(uv_params[i * 2]), 3)
-                    y = round(float(uv_params[i * 2 + 1]), 3)
-                    uv = Vector((x, y))
-                    pe_texmap.uvs.append(uv)
+            ab = vertices[1] - vertices[0]
+            bc = vertices[2] - vertices[1]
+            face_normal = ab.cross(bc).normalized()
 
-            else:
-                # calculate uvs
+            texture_normal = Vector((0.0, -1, 0.0))
+            if abs(face_normal.dot(texture_normal)) < 0.001:
+                return None
 
-                ab = vertices[1] - vertices[0]
-                bc = vertices[2] - vertices[1]
-                face_normal = ab.cross(bc).normalized()
+            for vert in vertices:
+                # if face is within p.boundingbox
+                # is_intersecting = (p.matrix @ p.bounding_box).interects(vert)
 
-                texture_normal = Vector((0.0, -1, 0.0))
-                if abs(face_normal.dot(texture_normal)) < 0.001:
-                    continue
+                uv = Vector((0, 0))
+                uv.x = (vert.x - point_min.x) / point_diff.x
+                uv.y = (vert.z - point_min.y) / point_diff.y
 
-                for vert in vertices:
-                    # if face is within p.boundingbox
-                    # is_intersecting = (p.matrix @ p.bounding_box).interects(vert)
+                pe_texmap.uvs.append(uv)
 
-                    uv = Vector((0, 0))
-                    uv.x = (vert.x - point_min.x) / point_diff.x
-                    uv.y = (vert.z - point_min.y) / point_diff.y
-
-                    pe_texmap.uvs.append(uv)
-
-        return pe_texmap
+            return pe_texmap
+        else:
+            return None
