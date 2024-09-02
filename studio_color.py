@@ -1,193 +1,53 @@
-import bpy
 import itertools
 import os.path
-
+from typing import Any, Iterable, Literal, Type, cast
 from xml.etree import ElementTree as ET
-from typing import Iterable, Literal, Any, cast, Type
-from mathutils import Color, Vector
 
-from . import custom_nodes
-from . import arrange
-from .helpers import new_node_group, new_node, new_socket
-
+import bpy
 from bpy.types import (
-    ShaderNodeRGB,
-    ShaderNodeAddShader,
-    ShaderNodeMixShader,
-    ShaderNodeValue,
-    ShaderNodeVectorTransform,
-    ShaderNodeGroup,
-    ShaderNodeTree,
-    ShaderNodeBevel,
-    ShaderNodeMath,
-    ShaderNodeVectorMath,
-    ShaderNodeTexVoronoi,
-    ShaderNodeValToRGB,
-    ShaderNodeRGBCurve,
-    ShaderNodeBsdfPrincipled,
-    ShaderNodeBsdfAnisotropic,
-    ShaderNodeBsdfTranslucent,
-    ShaderNodeBsdfTransparent,
-    ShaderNodeTexNoise,
-    ShaderNodeEmission,
-    ShaderNodeTexCoord,
-    ShaderNodeMapping,
-    ShaderNodeMapRange,
-    ShaderNodeObjectInfo,
-    ShaderNodeBsdfDiffuse,
-    ShaderNodeNormalMap,
-    ShaderNodeBrightContrast,
-    ShaderNodeUVMap,
-    ShaderNodeNewGeometry,
-    ShaderNodeVolumeAbsorption,
-    ShaderNodeLayerWeight,
-    ShaderNodeTexImage,
-    ShaderNodeMix,
-    ShaderNodeBump,
-    ShaderNodeSeparateXYZ,
-    ShaderNodeCombineXYZ,
-    ShaderNodeOutputMaterial,
-    NodeSocketVector,
-    NodeSocketFloat,
-    NodeSocketColor,
-    NodeSocketFloatFactor,
-    NodeSocketInt,
-    NodeSocketBool,
-    NodeSocketShader,
+    Node,
     NodeGroupInput,
     NodeGroupOutput,
-    Node,
     NodeSocket,
+    NodeSocketBool,
+    NodeSocketColor,
+    NodeSocketFloat,
+    NodeSocketFloatFactor,
+    NodeSocketInt,
+    NodeSocketVector,
     NodeTreeInterfaceSocket,
-    NodeTree,
+    ShaderNodeAddShader,
+    ShaderNodeBevel,
+    ShaderNodeBsdfAnisotropic,
+    ShaderNodeBsdfPrincipled,
+    ShaderNodeBump,
+    ShaderNodeGroup,
+    ShaderNodeMath,
+    ShaderNodeMix,
+    ShaderNodeOutputMaterial,
+    ShaderNodeRGB,
+    ShaderNodeRGBCurve,
+    ShaderNodeTexImage,
+    ShaderNodeTree,
+    ShaderNodeValToRGB,
+    ShaderNodeValue,
+    ShaderNodeVectorMath,
+    ShaderNodeVectorTransform,
 )
 
-node_types = {
-    'value': ShaderNodeValue,
-    'color': ShaderNodeRGB,
-    'vector': ShaderNodeRGB, # TODO: Custom node group with a three-number panel or whatever
+from mathutils import Color, Vector
 
-    'translucent_bsdf': ShaderNodeBsdfTranslucent,
-    'principled_bsdf': ShaderNodeBsdfPrincipled,
-    'transparent_bsdf': ShaderNodeBsdfTransparent,
+from . import arrange, custom_nodes
+from .helpers import new_node, new_node_group, new_socket
+from .studio_lookups import (
+    custom_node_groups,
+    input_aliases,
+    node_types,
+    output_aliases,
+    passthroughs,
+    socket_types,
+)
 
-    'mix_value': ShaderNodeMix,
-    'mix': ShaderNodeMix,
-    'mix_closure': ShaderNodeMixShader,
-
-    # In modern blender, mix can act as switch when the input is boolean
-    'switch_float': ShaderNodeMix,
-    'switch_closure': ShaderNodeMixShader, 
-    'glossy_bsdf': ShaderNodeBsdfAnisotropic, # unsure
-
-    'noise_texture': ShaderNodeTexNoise,
-    'image_texture': ShaderNodeTexImage,
-    'voronoi_texture': ShaderNodeTexVoronoi,
-
-    'group_input': NodeGroupInput,
-    'group_output': NodeGroupOutput,
-    'group': ShaderNodeGroup,
-
-    'separate_xyz': ShaderNodeSeparateXYZ,
-    'combine_xyz': ShaderNodeCombineXYZ,
-
-    'add_closure': ShaderNodeAddShader,
-    'emission': ShaderNodeEmission,
-    'texture_coordinate': ShaderNodeTexCoord,
-    'vector_transform': ShaderNodeVectorTransform,
-    'bump': ShaderNodeBump,
-    'rounding_edge_normal': ShaderNodeBevel,
-    'math': ShaderNodeMath,
-    'mapping': ShaderNodeMapping,
-    'map_range': ShaderNodeMapRange,
-    'rgb_ramp': ShaderNodeValToRGB,
-    'object_info': ShaderNodeObjectInfo,
-    'diffuse_bsdf': ShaderNodeBsdfDiffuse,
-    'normal_map': ShaderNodeNormalMap,
-    'vector_math': ShaderNodeVectorMath,
-    'brightness_contrast': ShaderNodeBrightContrast,
-    'uvmap': ShaderNodeUVMap,
-    'rgb_curves': ShaderNodeRGBCurve,
-    'geometry': ShaderNodeNewGeometry,
-    'absorption_volume': ShaderNodeVolumeAbsorption,
-    'layer_weight': ShaderNodeLayerWeight,
-}
-
-socket_types: dict[str, Type[NodeSocket]] = {
-    'color': NodeSocketColor,
-    'closure': NodeSocketShader,
-    'vector': NodeSocketVector,
-    'float': NodeSocketFloat,
-    'int': NodeSocketInt,
-    'boolean': NodeSocketBool,
-}
-
-passthroughs = {
-    'Levels': NodeSocketInt,
-    'MinColorRatio': NodeSocketFloat,
-    'MaxColorRatio': NodeSocketFloat,
-    'enable': NodeSocketBool,
-}
-
-custom_node_groups = {
-    'uv_degradation': 'UV Degradation',
-    'project_to_axis_plane': 'Project to Axis Planes',
-}
-
-input_aliases: dict[Type[Node], dict[str, str | int]] = {
-    ShaderNodeMapRange: { 'Value': 'Result' },
-    ShaderNodeBevel: { 'Size': 'Radius' },
-    ShaderNodeMath: { 'Value1': 0, 'Value2': 1 },
-    ShaderNodeMix: { 'Fac': 'Factor' },
-    ShaderNodeVectorMath: { 'Vector1': 0, 'Vector2': 1 },
-    ShaderNodeAddShader: { 'Shader1': 0, 'Shader2': 1 },
-    ShaderNodeMixShader: { 'Shader1': 1, 'Shader2': 2 },
-    ShaderNodeMix: {
-        'Fac': 0,
-        # <switch_float>
-        'ValueDisable': 2,
-        'ValueEnable': 3,
-        # <mix_value>
-        'Value1': 2,
-        'Value2': 3,
-        # <mix>
-        'Color1': 6,
-        'Color2': 7,
-    },
-    ShaderNodeBsdfPrincipled: {
-        'Subsurface': 'Subsurface Weight',
-        'Clearcoat': 'Coat Weight',
-        'ClearcoatRoughness': 'Coat Roughness',
-        'Clearcoat Roughness': 'Coat Roughness',
-        'ClearcoatNormal': 'Coat Normal',
-        'Clearcoat Normal': 'Coat Normal',
-        'Transmission': 'Transmission Weight',
-        'Sheen': 'Sheen Weight',
-        'SheenTint': 'Sheen Tint',
-        'Specular': 'Specular IOR Level',
-        'SpecularTint': 'Specular Tint',
-        'AnisotropicRotation': 'Anisotropic Rotation',
-        'SubsurfaceRadius': 'Subsurface Radius',
-
-        # # Not sure these are accurate.
-        'TransmissionRoughness': 'Roughness',
-        'Transmission Roughness': 'Roughness',
-        'SubsurfaceColor': 'Subsurface Radius',
-        'BaseColor': 'Base Color',
-        'Color': 'Base Color',
-    }
-}
-
-output_aliases: dict[Type[Node], dict[str, str | int]] = {
-    ShaderNodeMix: {
-        'Value': 'Result',
-        'ValueOut': 'Result',
-        'Color': 'Result',
-    },
-    ShaderNodeTexVoronoi: {
-        'Fac': 'Distance', # TODO: Or 'Position'?
-    },
-}
 
 def get_input(node: Node, key: str) -> NodeSocket:
     candidates: list[str | int] = [key]
