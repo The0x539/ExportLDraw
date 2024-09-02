@@ -260,12 +260,24 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         samples = [float(x) for x in elem.attrib['curves'].split()]
         colors = list(Color(x) for x in zip(samples[::3], samples[1::3], samples[2::3]))
 
+        to_remove = [[point for point in curve.points] for curve in node.mapping.curves]
+        
         for i, color in enumerate(colors):
+            if can_skip(colors, i, interpolate=True):
+                continue
+
             position = i / (len(colors) - 1)
             node.mapping.curves[0].points.new(position, color.r)
             node.mapping.curves[1].points.new(position, color.g)
             node.mapping.curves[2].points.new(position, color.b)
-            node.mapping.curves[3].points.new(position, 1.0)
+            node.mapping.curves[3].points.new(position, position)
+
+        for tr, curve in zip(to_remove, node.mapping.curves):
+            for point in tr:
+                try:
+                    curve.points.remove(point)
+                except:
+                    pass
 
     elif isinstance(node, ShaderNodeBsdfPrincipled):
         enum_attr(node, elem, 'subsurface_method')
