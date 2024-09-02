@@ -15,6 +15,9 @@ from bpy.types import (
     NodeSocketFloatFactor,
     NodeSocketInt,
     NodeSocketVector,
+    NodeSocketVectorEuler,
+    NodeSocketVectorTranslation,
+    NodeSocketVectorXYZ,
     NodeTreeInterfaceSocket,
     ShaderNodeAddShader,
     ShaderNodeBevel,
@@ -23,12 +26,18 @@ from bpy.types import (
     ShaderNodeBump,
     ShaderNodeGroup,
     ShaderNodeMath,
+    ShaderNodeMapping,
     ShaderNodeMix,
+    ShaderNodeMixShader,
+    ShaderNodeNormalMap,
     ShaderNodeOutputMaterial,
     ShaderNodeRGB,
     ShaderNodeRGBCurve,
     ShaderNodeTexImage,
+    ShaderNodeTexNoise,
+    ShaderNodeTexVoronoi,
     ShaderNodeTree,
+    ShaderNodeUVMap,
     ShaderNodeValToRGB,
     ShaderNodeValue,
     ShaderNodeVectorMath,
@@ -38,7 +47,7 @@ from bpy.types import (
 from mathutils import Color, Vector
 
 from . import arrange, custom_nodes
-from .helpers import new_node, new_node_group, new_socket
+from .helpers import new_node, new_node_group, new_socket, assert_type
 from .studio_lookups import (
     custom_node_groups,
     input_aliases,
@@ -109,10 +118,10 @@ def process_xml(root: ET.Element, dir: str) -> None:
         elif thing.tag == 'group':
             process_group(thing.attrib, shader, dir)
 
-def extract_vector(elem: ET.Element) -> tuple:
-    value = elem.get('value')
+def extract_vector(elem: ET.Element, attrib: str = 'value') -> tuple:
+    value = elem.get(attrib)
     if value is None:
-        raise KeyError('value')
+        raise KeyError(attrib)
     value = value.replace(', ', ' ') # I have no words
     return tuple(float(x) for x in value.split())
 
@@ -171,7 +180,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
     if elem.tag.startswith('switch'):
         if enable := elem.get('enable'):
             assert isinstance(node.inputs[0], NodeSocketFloat | NodeSocketFloatFactor)
-            node.inputs[0].default_value = float(bool(enable))
+            node.inputs[0].default_value = float(enable.lower() == 'true')
 
     if isinstance(node, ShaderNodeGroup) and elem.tag == 'group':
         process_group_node(node, elem)
@@ -188,17 +197,19 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         if elem.tag == 'mix':
             node.data_type = 'RGBA'
 
-        if blend_type := elem.get('type'):
-            node.blend_type = cast(Any, blend_type.upper())
+        enum_attr(node, elem, 'blend_type', 'type')
 
         if use_clamp := elem.get('use_clamp'):
-            node.clamp_factor = node.clamp_result = bool(use_clamp)
+            node.clamp_factor = node.clamp_result = use_clamp.lower() == 'true'
+
+    elif isinstance(node, ShaderNodeMixShader):
+        pass
 
     elif isinstance(node, ShaderNodeBump):
         if enable := elem.get('enable'):
-            node.mute = not bool(enable)
+            node.mute = enable.lower() != 'true'
         if invert := elem.get('invert'):
-            node.invert = bool(invert)
+            node.invert = invert.lower() == 'true'
 
     elif isinstance(node, ShaderNodeValue):
         value_output = node.outputs['Value']
@@ -206,14 +217,14 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         value_output.default_value = float(elem.get('value', ''))
 
     elif isinstance(node, ShaderNodeVectorTransform):
-        node.convert_from = cast(Any, elem.attrib['convert_from'].upper())
-        node.convert_to = cast(Any, elem.attrib['convert_to'].upper())
-        node.vector_type = cast(Any, elem.attrib['type'].upper())
+        enum_attr(node, elem, 'convert_from', required=True)
+        enum_attr(node, elem, 'convert_to', required=True)
+        enum_attr(node, elem, 'vector_type', 'type', required=True)
 
     elif isinstance(node, ShaderNodeMath):
-        node.operation = cast(Any, elem.attrib['type'].upper())
+        enum_attr(node, elem, 'operation', 'type', required=True)
         if use_clamp := elem.get('use_clamp'):
-            node.use_clamp = bool(use_clamp)
+            node.use_clamp = use_clamp.lower() == 'true'
 
     elif isinstance(node, ShaderNodeVectorMath):
         operation = elem.attrib['type'].upper()
@@ -225,7 +236,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
     elif isinstance(node, ShaderNodeValToRGB):
         original_elements = node.color_ramp.elements[:]
         
-        interpolate = bool(elem.attrib['interpolate'])
+        interpolate = elem.attrib['interpolate'].lower() == 'true'
         node.color_ramp.interpolation = 'LINEAR' if interpolate else 'CONSTANT'
         
         samples = [float(x) for x in elem.attrib['ramp'].split()]
@@ -257,18 +268,14 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
             node.mapping.curves[3].points.new(position, 1.0)
 
     elif isinstance(node, ShaderNodeBsdfPrincipled):
-        if subsurface_method := elem.get('subsurface_method'):
-            node.subsurface_method = cast(Any, subsurface_method.upper())
-
-        if distribution := elem.get('distribution'):
-            node.distribution = cast(Any, distribution.upper())
+        enum_attr(node, elem, 'subsurface_method')
+        enum_attr(node, elem, 'distribution')
 
     elif isinstance(node, ShaderNodeBsdfAnisotropic):
-        if distribution := elem.get('distribution'):
-            node.distribution = cast(Any, distribution.upper())
+        enum_attr(node, elem, 'distribution')
 
     elif isinstance(node, ShaderNodeTexImage):
-        node.extension = cast(Any, elem.attrib['extension'].upper())
+        enum_attr(node, elem, 'extension')
 
         if filename := elem.get('filename'):
             image_path = os.path.join(dir, filename)
@@ -279,6 +286,67 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
             img.update()
             node.image = img
 
+    elif isinstance(node, ShaderNodeTexVoronoi):
+        if coloring := elem.get('coloring'):
+            coloring = coloring.lower()
+            if coloring == 'cells':
+                pass
+            elif coloring == 'intensity':
+                # TODO: This will require a pow(2.2) function to produce the right imported value
+                raise NotImplementedError()
+            else:
+                raise ValueError(f'Unrecognized coloring method: "{coloring}"')
+
+    elif isinstance(node, ShaderNodeTexNoise):
+        if rotation := elem.get('tex_mapping.rotation'):
+            node.texture_mapping.rotation = [float(n) for n in rotation.split()]
+
+        if scale := elem.get('tex_mapping.scale'):
+            node.texture_mapping.scale = [float(n) for n in scale.split()]
+
+        if translation := elem.get('tex_mapping.translation'):
+            node.texture_mapping.translation = [float(n) for n in translation.split()]
+
+        enum_attr(node.texture_mapping, elem, 'vector_type', 'tex_mapping.type')
+        enum_attr(node.texture_mapping, elem, 'mapping_x', 'tex_mapping.x_mapping')
+        enum_attr(node.texture_mapping, elem, 'mapping_y', 'tex_mapping.y_mapping')
+        enum_attr(node.texture_mapping, elem, 'mapping_z', 'tex_mapping.z_mapping')
+
+    elif isinstance(node, ShaderNodeUVMap):
+        if from_instancer := elem.get('from_dupli'):
+            node.from_instancer = from_instancer.lower() == 'true'
+
+        if uv_map := elem.get('attribute'):
+            node.uv_map = uv_map
+
+    elif isinstance(node, ShaderNodeNormalMap):
+        enum_attr(node, elem, 'space')
+
+        if uv_map := elem.get('attribute'):
+            node.uv_map = uv_map
+
+    elif isinstance(node, ShaderNodeBevel):
+        if enabled := elem.get('enabled'):
+            assert enabled == 'true' # Why would this be false instead of just omitting the node?
+
+    elif isinstance(node, ShaderNodeMapping):
+        if rotation := elem.get('tex_mapping.rotation'):
+            rotation_input = assert_type(node.inputs[2], NodeSocketVectorEuler)
+            rotation_input.default_value = [float(n) for n in rotation.split()]
+
+        if scale := elem.get('tex_mapping.scale'):
+            scale_input = assert_type(node.inputs[3], NodeSocketVectorXYZ)
+            scale_input.default_value = [float(n) for n in scale.split()]
+
+        if translation := elem.get('tex_mapping.translation'):
+            location_input = assert_type(node.inputs[1], NodeSocketVectorTranslation)
+            location_input.default_value = [float(n) for n in translation.split()]
+
+        enum_attr(node, elem, 'vector_type', 'tex_mapping.type')
+
+        if use_minmax := elem.get('tex_mapping.use_minmax'):
+            assert use_minmax == 'False' # Not sure what this expresses.
+        
     else:
         # print the element if there are any element-specific attributes we should care about missing
         for key in elem.attrib.keys():
@@ -315,7 +383,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         elif isinstance(socket, NodeSocketInt):
             socket.default_value = int(value)
         elif isinstance(socket, NodeSocketBool):
-            socket.default_value = bool(value)
+            socket.default_value = value.lower() == 'true'
         else:
             print('Unrecognized socket:', socket)
 
@@ -428,3 +496,10 @@ def can_skip(colors: list[Color], i: int, interpolate: bool) -> bool:
             return True
 
     return False
+
+def enum_attr(node: object, elem: ET.Element, attr: str, alias: str | None = None, required: bool = False) -> None:
+    if value := elem.get(alias or attr):
+        value = value.upper()
+        setattr(node, attr, value)
+    elif required:
+        raise KeyError(attr or alias)
