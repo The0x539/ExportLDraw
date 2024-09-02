@@ -135,25 +135,24 @@ custom_node_groups = {
 }
 
 input_aliases: dict[Type[Node], dict[str, str | int]] = {
-    ShaderNodeBsdfPrincipled: {
-        '': '',
-    },
-    ShaderNodeMapRange: {
-        'Value': 'Result',
-    },
-    ShaderNodeBevel: {
-        'Size': 'Radius',
-    },
-    ShaderNodeMath: {
-        'Value1': 0,
-        'Value2': 1,
-    },
+    ShaderNodeMapRange: { 'Value': 'Result' },
+    ShaderNodeBevel: { 'Size': 'Radius' },
+    ShaderNodeMath: { 'Value1': 0, 'Value2': 1 },
+    ShaderNodeMix: { 'Fac': 'Factor' },
+    ShaderNodeVectorMath: { 'Vector1': 0, 'Vector2': 1 },
+    ShaderNodeAddShader: { 'Shader1': 0, 'Shader2': 1 },
+    ShaderNodeMixShader: { 'Shader1': 1, 'Shader2': 2 },
     ShaderNodeMix: {
-        'Fac': 'Factor',
-    },
-    ShaderNodeVectorMath: {
-        'Vector1': 0,
-        'Vector2': 1,
+        'Fac': 0,
+        # <switch_float>
+        'ValueDisable': 2,
+        'ValueEnable': 3,
+        # <mix_value>
+        'Value1': 2,
+        'Value2': 3,
+        # <mix>
+        'Color1': 6,
+        'Color2': 7,
     },
     ShaderNodeBsdfPrincipled: {
         'Subsurface': 'Subsurface Weight',
@@ -247,8 +246,8 @@ def load_xml(filepath: str) -> None:
     process_xml(tree.getroot(), os.path.dirname(filepath))
 
 def process_xml(root: ET.Element, dir: str) -> None:
-    # custom_nodes.uv_degradation()
-    # custom_nodes.project_to_axis_planes()
+    custom_nodes.uv_degradation()
+    custom_nodes.project_to_axis_planes()
     
     for thing in root:
         if thing.tag not in ('material', 'group'):
@@ -299,7 +298,11 @@ def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element], dir
 
 def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
     if elem.tag == 'connect':
-        process_connect(group, elem)
+        try:
+            process_connect(group, elem)
+        except Exception as exc:
+            print(f'{elem.tag} {elem.attrib}')
+            raise exc from None
         return
     elif elem.tag == 'group':
         process_group_node(group, elem)
@@ -332,31 +335,17 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         color_output = node.outputs['Color']
         assert isinstance(color_output, NodeSocketColor)
         color_output.default_value = extract_vector(elem) + (0.0,)
+        # TODO: Remove when vector constants have their own node
         if elem.tag == 'vector':
             color_output.name = 'Vector'
 
-    elif isinstance(node, ShaderNodeAddShader):
-        node.inputs[0].name = 'Shader1'
-        node.inputs[1].name = 'Shader2'
-
-    elif isinstance(node, ShaderNodeMixShader):
-        node.inputs[1].name = 'Shader1'
-        node.inputs[2].name = 'Shader2'
-
     elif isinstance(node, ShaderNodeMix):
-        if elem.tag == 'switch_float':
-            node.inputs[2].name = 'ValueDisable'
-            node.inputs[3].name = 'ValueEnable'
-        elif elem.tag == 'mix_value':
-            node.inputs[2].name = 'Value1'
-            node.inputs[3].name = 'Value2'
-        elif elem.tag == 'mix':
+        if elem.tag == 'mix':
             node.data_type = 'RGBA'
-            node.inputs[6].name ='Color1'
-            node.inputs[7].name ='Color2'
 
         if blend_type := elem.get('type'):
             node.blend_type = cast(Any, blend_type.upper())
+
         if use_clamp := elem.get('use_clamp'):
             node.clamp_factor = node.clamp_result = bool(use_clamp)
 
@@ -382,15 +371,11 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
             node.use_clamp = bool(use_clamp)
 
     elif isinstance(node, ShaderNodeVectorMath):
-        if elem.tag == 'project_to_axis_plane':
-            node.inputs[0].name = 'In'
-            node.outputs[0].name = 'Out'
-        else:
-            operation = elem.attrib['type'].upper()
-            if operation == 'AVERAGE':
-                # todo
-                operation = 'ADD'
-            node.operation = cast(Any, operation)
+        operation = elem.attrib['type'].upper()
+        if operation == 'AVERAGE':
+            # todo
+            operation = 'ADD'
+        node.operation = cast(Any, operation)
 
     elif isinstance(node, ShaderNodeValToRGB):
         original_elements = node.color_ramp.elements[:]
@@ -523,7 +508,7 @@ def process_group_node(group: ShaderNodeTree, elem: ET.Element) -> None:
                 and
                 (socket.bl_socket_idname, socket_type) == ('NodeSocketFloat', NodeSocketColor)
             )
-            assert socket.bl_socket_idname == socket_type.__name__ or weird_scenario
+            assert socket.bl_socket_idname == socket_type.__name__ or weird_scenario, f'expected {socket_type.__name__}, got {socket.bl_socket_idname}'
             break
         else:
             print(f'missing socket: {group_name}::{in_out} / {name} {socket_type.__name__}')

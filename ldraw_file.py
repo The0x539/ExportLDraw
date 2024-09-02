@@ -88,8 +88,8 @@ class LDrawFile:
         if filename == alt_filename and ldraw_file is None:
             ldraw_file = LDrawFile.get_file(standard_filename)
 
-        studio_color.load_xml(os.path.join(APP_ROOT, 'inc', 'uv_degradation.xml'))
-        studio_color.load_xml(os.path.join(APP_ROOT, 'inc', 'project_to_axis_planes.xml'))
+        # studio_color.load_xml(os.path.join(APP_ROOT, 'inc', 'uv_degradation.xml'))
+        # studio_color.load_xml(os.path.join(APP_ROOT, 'inc', 'project_to_axis_planes.xml'))
         studio_color.load_xml("C:/Program Files/Studio 2.0 EarlyAccess/PhotoRealisticRenderer/win/64/settings.xml")
         studio_color.load_xml("C:/Program Files/Studio 2.0 EarlyAccess/data/CustomColors/CustomColorSettings.xml")
 
