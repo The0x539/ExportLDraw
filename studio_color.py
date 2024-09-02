@@ -48,58 +48,43 @@ from .studio_lookups import (
     socket_types,
 )
 
+def get_socket(
+    node: Node,
+    key: str,
+    sockets: bpy.types.NodeInputs | bpy.types.NodeOutputs,
+    aliases: dict[type[Node], dict[str, str | int]],
+) -> NodeSocket:
+    candidates: list[str | int] = [key]
+
+    if aliases_for_node := aliases.get(type(node)):
+        if key in aliases_for_node:
+            candidates.append(aliases_for_node[key])
+
+    for k in candidates:
+        if isinstance(k, int) and k < len(sockets):
+            return sockets[k]
+        elif k in sockets.keys():
+            try:
+                return sockets[k]
+            except:
+                pass
+        else:
+            i = sockets.find(key)
+            if i >= 0:
+                return sockets[i]
+
+    print('could not find socket', key)
+    print('in', ', '.join(sockets.keys()))
+    print('for', node)
+    print('tried', candidates)
+    print(sockets)
+    raise KeyError(key)
 
 def get_input(node: Node, key: str) -> NodeSocket:
-    candidates: list[str | int] = [key]
-
-    if aliases := input_aliases.get(type(node)):
-        if key in aliases:
-            candidates.append(aliases[key])
-
-    for k in candidates:
-        if isinstance(k, int) and k < len(node.inputs):
-            return node.inputs[k]
-        elif k in node.inputs.keys():
-            try:
-                return node.inputs[k]
-            except:
-                pass
-        else:
-            i = node.inputs.find(key)
-            if i >= 0:
-                return node.inputs[i]
-
-    print('could not find input', key)
-    print('in', ', '.join(node.inputs.keys()))
-    print('for', node)
-    print('tried', candidates)
-    raise KeyError(key)
+    return get_socket(node, key, node.inputs, input_aliases)
 
 def get_output(node: Node, key: str) -> NodeSocket:
-    candidates: list[str | int] = [key]
-
-    if aliases := output_aliases.get(type(node)):
-        if key in aliases:
-            candidates.append(aliases[key])
-
-    for k in candidates:
-        if isinstance(k, int) and k < len(node.outputs):
-            return node.outputs[k]
-        elif k in node.outputs.keys():
-            try:
-                return node.outputs[k]
-            except:
-                pass
-        else:
-            i = node.outputs.find(key)
-            if i >= 0:
-                return node.outputs[i]
-
-    print('could not find output', key)
-    print('in', ', '.join(node.outputs.keys()))
-    print('for', node)
-    print('tried', candidates)
-    raise KeyError(key)
+    return get_socket(node, key, node.outputs, output_aliases)
 
 def load_xml(filepath: str) -> None:
     tree = ET.parse(filepath)
@@ -164,9 +149,6 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
             print(f'{elem.tag} {elem.attrib}')
             raise exc from None
         return
-    elif elem.tag == 'group':
-        process_group_node(group, elem)
-        return
 
     node: Node
     if elem.tag in custom_node_groups:
@@ -191,7 +173,10 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
             assert isinstance(node.inputs[0], NodeSocketFloat | NodeSocketFloatFactor)
             node.inputs[0].default_value = float(bool(enable))
 
-    if isinstance(node, ShaderNodeRGB):
+    if isinstance(node, ShaderNodeGroup) and elem.tag == 'group':
+        process_group_node(node, elem)
+        
+    elif isinstance(node, ShaderNodeRGB):
         color_output = node.outputs['Color']
         assert isinstance(color_output, NodeSocketColor)
         color_output.default_value = extract_vector(elem) + (0.0,)
@@ -302,16 +287,22 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
                 break
 
     for socket_elem in elem:
-        if not isinstance(node, ShaderNodeGroup):
-            assert socket_elem.tag == 'input'
+        socket_name = socket_elem.get('name', '')
 
-        input_name = socket_elem.get('name', '')
-
-        if isinstance(node, ShaderNodeBevel) and input_name == 'Samples':
+        if isinstance(node, ShaderNodeBevel) and socket_name == 'Samples':
             node.samples = int(socket_elem.get('value', ''))
             continue
 
-        socket = get_input(node, input_name)
+        if socket_elem.tag != 'input':
+            assert socket_elem.tag == 'output'
+            assert isinstance(node, ShaderNodeGroup)
+            continue
+
+        socket = get_input(node, socket_name)
+
+        value = socket_elem.get('value')
+        if value is None:
+            continue
 
         if isinstance(socket, NodeSocketVector | NodeSocketColor):
             # this is awful
@@ -320,27 +311,24 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
                 v += (0.0,)
             socket.default_value = v
         elif isinstance(socket, NodeSocketFloat | NodeSocketFloatFactor):
-            socket.default_value = float(socket_elem.get('value', ''))
+            socket.default_value = float(value)
         elif isinstance(socket, NodeSocketInt):
-            socket.default_value = int(socket_elem.get('value', ''))
+            socket.default_value = int(value)
         elif isinstance(socket, NodeSocketBool):
-            socket.default_value = bool(socket_elem.get('value', ''))
+            socket.default_value = bool(value)
         else:
             print('Unrecognized socket:', socket)
 
 # TODO: this probably has more in common with the other nodes than I thought,
 # once defining all the groups ahead of time is taken care of
-def process_group_node(group: ShaderNodeTree, elem: ET.Element) -> None:
-    node = new_node(group, ShaderNodeGroup)
-
-    node.name = elem.attrib['name']
-
-    group_name = elem.get('group_name', '')            
+def process_group_node(node: ShaderNodeGroup, elem: ET.Element) -> None:
+    group_name = elem.get('group_name', '')
     if group_name in bpy.data.node_groups:
         subgroup = bpy.data.node_groups[group_name]
         assert isinstance(subgroup, ShaderNodeTree)
         node.node_tree = subgroup
     else:
+        print(f'{elem.tag} {elem.attrib}')
         print('missing group:', group_name)
         subgroup = new_node_group(group_name, ShaderNodeTree)
 
@@ -369,6 +357,9 @@ def process_group_node(group: ShaderNodeTree, elem: ET.Element) -> None:
                 (socket.bl_socket_idname, socket_type) == ('NodeSocketFloat', NodeSocketColor)
             )
             assert socket.bl_socket_idname == socket_type.__name__ or weird_scenario, f'expected {socket_type.__name__}, got {socket.bl_socket_idname}'
+
+            # successfully found a matching socket definition
+            # skip the else block
             break
         else:
             print(f'missing socket: {group_name}::{in_out} / {name} {socket_type.__name__}')
