@@ -19,16 +19,18 @@ from bpy.types import (
     NodeGroupOutput,
     Node,
     ShaderNodeTree,
+    NodeSocketInt,
+    NodeSocketColor,
 )
 
 from . import arrange
+from .helpers import new_node_group, new_node, new_math_node, new_socket
 
 def uv_degradation() -> None:
     if 'UV Degradation' in bpy.data.node_groups:
         return
 
-    group = bpy.data.node_groups.new('UV Degradation', cast(Any, 'ShaderNodeTree'))
-    assert isinstance(group, ShaderNodeTree)
+    group = new_node_group('UV Degradation', ShaderNodeTree)
 
     for (name, ty) in (
         ('FromColor', 'Color'),
@@ -42,14 +44,13 @@ def uv_degradation() -> None:
     ):
         group.interface.new_socket(name, in_out='INPUT', socket_type='NodeSocket' + ty)
 
-    levels = group.interface.new_socket('Levels', in_out='INPUT', socket_type='NodeSocketInt')
-    assert isinstance(levels, NodeTreeInterfaceSocketInt)
+    levels = new_socket(group, 'INPUT', 'Levels', NodeSocketInt)
     levels.min_value = 1
     levels.default_value = 4
     levels.max_value = 10
     
-    group.interface.new_socket('OutColor', in_out='OUTPUT', socket_type='NodeSocketColor')
-    group.interface.new_socket('OutRoughness', in_out='OUTPUT', socket_type='NodeSocketFloat')
+    new_socket(group, 'OUTPUT', 'OutColor', NodeSocketColor)
+    new_socket(group, 'OUTPUT', 'OutRoughness', NodeSocketFloat)
 
     input = new_node(group, NodeGroupInput)
     output = new_node(group, NodeGroupOutput)
@@ -57,25 +58,25 @@ def uv_degradation() -> None:
     object_info = new_node(group, ShaderNodeObjectInfo)
 
     # step_1 = rand() * Levels
-    step_1 = new_math(group, 'MULTIPLY')
+    step_1 = new_math_node(group, 'MULTIPLY')
     link(group, step_1, {
         0: object_info.outputs['Random'],
         1: input.outputs['Levels'],
     })
 
     # step_2 = floor(step_1)
-    step_2 = new_math(group, 'FLOOR')
+    step_2 = new_math_node(group, 'FLOOR')
     link(group, step_2, step_1.outputs[0])
 
     # step_3 = Levels - 1
-    step_3 = new_math(group, 'SUBTRACT')
+    step_3 = new_math_node(group, 'SUBTRACT')
     link(group, step_3, input.outputs['Levels'])
     assert isinstance(step_3.inputs[1], NodeSocketFloat)
     step_3.inputs[1].default_value = 1
 
     # t = clamp(step_2 / step_3, 0, 1)
     # the blender math node uses safe division, so if Levels = 1, t = 0 with no error
-    t = new_math(group, 'DIVIDE', 't')
+    t = new_math_node(group, 'DIVIDE', 't')
     t.use_clamp = True
     link(group, t, {
         0: step_2.outputs[0],
@@ -94,14 +95,14 @@ def uv_degradation() -> None:
     })
     
     # color_t = color_ratio * Strength
-    color_t = new_math(group, 'MULTIPLY', 'color_t')
+    color_t = new_math_node(group, 'MULTIPLY', 'color_t')
     link(group, color_t, {
         0: color_ratio.outputs[0],
         1: input2.outputs['Strength'],
     })
 
     # t_strength = t * strength
-    t_strength = new_math(group, 'MULTIPLY', 't * Strength')
+    t_strength = new_math_node(group, 'MULTIPLY', 't * Strength')
     link(group, t_strength, {
         0: t.outputs[0],
         1: input2.outputs['Strength'],
@@ -158,29 +159,29 @@ def project_to_axis_planes() -> None:
     group = bpy.data.node_groups.new('Project to Axis Planes', cast(Any, 'ShaderNodeTree'))
     assert isinstance(group, ShaderNodeTree)
 
-    group.interface.new_socket('In', in_out='INPUT', socket_type='NodeSocketVector')
-    group.interface.new_socket('Out', in_out='OUTPUT', socket_type='NodeSocketVector')
+    new_socket(group, 'INPUT', 'In', NodeSocketVector)
+    new_socket(group, 'OUTPUT', 'Out', NodeSocketVector)
 
-    input = group.nodes.new('NodeGroupInput')
-    output = group.nodes.new('NodeGroupOutput')
+    input = new_node(group, NodeGroupInput)
+    output = new_node(group, NodeGroupOutput)
 
     tex_coord = new_node(group, ShaderNodeTexCoord)
 
     split_normal = new_node(group, ShaderNodeSeparateXYZ, 'Split Normal')
     link(group, split_normal, tex_coord.outputs['Normal'])
 
-    abs_x = new_math(group, 'ABSOLUTE', 'Abs(X)')
+    abs_x = new_math_node(group, 'ABSOLUTE', 'Abs(X)')
     link(group, abs_x, split_normal.outputs['X'])
     
-    abs_y = new_math(group, 'ABSOLUTE', 'Abs(Y)')
+    abs_y = new_math_node(group, 'ABSOLUTE', 'Abs(Y)')
     link(group, abs_y, split_normal.outputs['Y'])
 
-    facing_x = new_math(group, 'GREATER_THAN', 'Facing X')
+    facing_x = new_math_node(group, 'GREATER_THAN', 'Facing X')
     link(group, facing_x, abs_x.outputs[0])
     assert isinstance(facing_x.inputs[1], NodeSocketFloat)
     facing_x.inputs[1].default_value = 0.5
 
-    facing_y = new_math(group, 'GREATER_THAN', 'Facing Y')
+    facing_y = new_math_node(group, 'GREATER_THAN', 'Facing Y')
     link(group, facing_y, abs_y.outputs[0])
     assert isinstance(facing_y.inputs[1], NodeSocketFloat)
     facing_y.inputs[1].default_value = 0.5
@@ -223,20 +224,6 @@ def project_to_axis_planes() -> None:
     group.links.new(if_facing_y.outputs['Result'], output.inputs[0])
 
     arrange.nodes_iterate(group)
-
-N = TypeVar('N', bound=Node)
-
-def new_node(group: ShaderNodeTree, cls: Type[N], label: str | None = None) -> N:
-    node = group.nodes.new(cls.__name__)
-    assert isinstance(node, cls)
-    if label:
-        node.name = node.label = label
-    return node
-
-def new_math(group: ShaderNodeTree, operation: Any, label: str | None = None) -> ShaderNodeMath:
-    node = new_node(group, ShaderNodeMath, label)
-    node.operation = operation
-    return node
 
 def link(
     group: ShaderNodeTree,

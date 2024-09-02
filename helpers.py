@@ -6,6 +6,26 @@ import json
 from pathlib import Path
 import os
 
+from typing import TypeVar, Any, Literal, overload
+
+import bpy
+from bpy.types import (
+    NodeTree,
+    ShaderNodeMath,
+    Node,
+    NodeSocket,
+    NodeSocketInt,
+    NodeSocketVector,
+    NodeSocketColor,
+    NodeSocketFloat,
+    NodeSocketFloatFactor,
+    NodeTreeInterfaceSocket,
+    NodeTreeInterfaceSocketInt,
+    NodeTreeInterfaceSocketVector,
+    NodeTreeInterfaceSocketColor,
+    NodeTreeInterfaceSocketFloat,
+)
+
 from .definitions import APP_ROOT
 
 
@@ -110,3 +130,70 @@ def hide_obj(obj):
 def show_obj(obj):
     obj.hide_viewport = False
     obj.hide_render = False
+
+T = TypeVar('T')
+
+def assert_type(value: object, ty: type[T]) -> T:
+    assert isinstance(value, ty), f'Expected {ty}, got {type(value)}'
+    return value
+
+G = TypeVar('G', bound=NodeTree)
+
+def new_node_group(name: str, ty: type[G]) -> G:
+    # workaround for bug in bpy type annotations
+    type_name: Literal['DUMMY'] = ty.__name__ # type: ignore
+    group = bpy.data.node_groups.new(name, type_name)
+    assert isinstance(group, ty)
+    return group
+
+N = TypeVar('N', bound=Node)
+
+def new_node(node_tree: NodeTree, cls: type[N], label: str | None = None) -> N:
+    node = node_tree.nodes.new(cls.__name__)
+    assert isinstance(node, cls)
+    if label is not None:
+        node.name = node.label = label
+    return node
+
+def new_math_node(
+    node_tree: NodeTree,
+    operation: Literal[
+        'ADD',
+        'SUBTRACT',
+        'MULTIPLY',
+        'DIVIDE',
+        'FLOOR',
+        'CEIL',
+        'GREATER_THAN',
+        'LESS_THAN',
+        'ABSOLUTE',
+    ],
+    label: str | None = None,
+) -> ShaderNodeMath:
+    node = new_node(node_tree, ShaderNodeMath, label)
+    node.operation = operation
+    return node
+
+InOut = Literal['INPUT', 'OUTPUT']
+
+@overload
+def new_socket(node_tree: NodeTree, in_out: InOut, name: str, ty: type[NodeSocketInt]) -> NodeTreeInterfaceSocketInt: ...
+
+@overload
+def new_socket(node_tree: NodeTree, in_out: InOut, name: str, ty: type[NodeSocketVector]) -> NodeTreeInterfaceSocketVector: ...
+
+@overload
+def new_socket(node_tree: NodeTree, in_out: InOut, name: str, ty: type[NodeSocketColor]) -> NodeTreeInterfaceSocketColor: ...
+
+@overload
+def new_socket(node_tree: NodeTree, in_out: InOut, name: str, ty: type[NodeSocketFloat]) -> NodeTreeInterfaceSocketFloat: ...
+
+# fallback case
+@overload
+def new_socket(node_tree: NodeTree, in_out: InOut, name: str, ty: type[NodeSocket]) -> NodeTreeInterfaceSocket: ...
+
+def new_socket(node_tree: NodeTree, in_out: InOut, name: str, ty: type[NodeSocket]) -> NodeTreeInterfaceSocket:
+    if ty is NodeSocketFloatFactor:
+        ty = NodeSocketFloat
+    socket = node_tree.interface.new_socket(name, in_out=in_out, socket_type=ty.__name__) 
+    return socket

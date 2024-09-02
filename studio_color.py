@@ -8,6 +8,7 @@ from mathutils import Color, Vector
 
 from . import custom_nodes
 from . import arrange
+from .helpers import new_node_group, new_node, new_socket
 
 from bpy.types import (
     ShaderNodeRGB,
@@ -45,6 +46,7 @@ from bpy.types import (
     ShaderNodeBump,
     ShaderNodeSeparateXYZ,
     ShaderNodeCombineXYZ,
+    ShaderNodeOutputMaterial,
     NodeSocketVector,
     NodeSocketFloat,
     NodeSocketColor,
@@ -249,16 +251,18 @@ def process_xml(root: ET.Element, dir: str) -> None:
     # custom_nodes.project_to_axis_planes()
     
     for thing in root:
+        if thing.tag not in ('material', 'group'):
+            print('unknown thing-type:', thing.tag)
+            continue
+
+        assert len(thing) == 1
+        shader = thing[0]
+        assert shader.tag == 'shader'
+
         if thing.tag == 'material':
-            assert len(thing) == 1
-            shader = thing[0]
-            assert shader.tag == 'shader'
             process_material(thing.attrib, shader, dir)
 
         elif thing.tag == 'group':
-            assert len(thing) == 1
-            shader = thing[0]
-            assert shader.tag == 'shader'
             process_group(thing.attrib, shader, dir)
 
 def extract_vector(elem: ET.Element) -> tuple:
@@ -277,8 +281,7 @@ def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Elemen
     assert group is not None
     group.nodes.clear()
 
-    output = group.nodes.new('ShaderNodeOutputMaterial')
-    output.name = 'Output'
+    output = new_node(group, ShaderNodeOutputMaterial, 'Output')
 
     for elem in shader:
         process_node(group, elem, dir)
@@ -287,8 +290,7 @@ def process_material(material_attrib: dict[str, str], shader: Iterable[ET.Elemen
 
 def process_group(group_attrib: dict[str, str], nodes: Iterable[ET.Element], dir: str) -> None:
     group_name = group_attrib['name']
-    group = bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree'))
-    assert isinstance(group, ShaderNodeTree)
+    group = new_node_group(group_name, ShaderNodeTree)
 
     for elem in nodes:
         process_node(group, elem, dir)
@@ -307,8 +309,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
     if elem.tag in custom_node_groups:
         # The node is one of a handful that either were either removed from Blender or custom to Eyesight
         # Emulate it using a custom node group
-        node = group.nodes.new('ShaderNodeGroup')
-        assert isinstance(node, ShaderNodeGroup)
+        node = new_node(group, ShaderNodeGroup)
         tree = bpy.data.node_groups[custom_node_groups[elem.tag]]
         assert isinstance(tree, ShaderNodeTree)
         node.node_tree = tree
@@ -320,8 +321,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
             return
         node = group.nodes.new(node_type.__name__)
 
-    node.name = elem.get('name', '')
-    node.label = node.name
+    node.label = node.name = elem.get('name', '')
 
     if elem.tag.startswith('switch'):
         if enable := elem.get('enable'):
@@ -333,7 +333,7 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
         assert isinstance(color_output, NodeSocketColor)
         color_output.default_value = extract_vector(elem) + (0.0,)
         if elem.tag == 'vector':
-            node.outputs['Color'].name = 'Vector'
+            color_output.name = 'Vector'
 
     elif isinstance(node, ShaderNodeAddShader):
         node.inputs[0].name = 'Shader1'
@@ -486,18 +486,18 @@ def process_node(group: ShaderNodeTree, elem: ET.Element, dir) -> None:
 # TODO: this probably has more in common with the other nodes than I thought,
 # once defining all the groups ahead of time is taken care of
 def process_group_node(group: ShaderNodeTree, elem: ET.Element) -> None:
-    node = group.nodes.new('ShaderNodeGroup')
-    assert isinstance(node, ShaderNodeGroup)
+    node = new_node(group, ShaderNodeGroup)
 
     node.name = elem.attrib['name']
 
     group_name = elem.get('group_name', '')            
     if group_name in bpy.data.node_groups:
-        subgroup = cast(ShaderNodeTree, bpy.data.node_groups[group_name])
+        subgroup = bpy.data.node_groups[group_name]
+        assert isinstance(subgroup, ShaderNodeTree)
         node.node_tree = subgroup
     else:
         print('missing group:', group_name)
-        subgroup = cast(ShaderNodeTree, bpy.data.node_groups.new(group_name, cast(Any, 'ShaderNodeTree')))
+        subgroup = new_node_group(group_name, ShaderNodeTree)
 
     assert isinstance(subgroup, ShaderNodeTree)
 
@@ -537,8 +537,9 @@ def process_connect(group: ShaderNodeTree, elem: ET.Element) -> None:
     to_node = group.nodes[elem.attrib['to_node']]
     to_socket_name = elem.attrib['to_socket']
 
+    socket_type: Type[NodeSocket]
+
     if isinstance(from_node, NodeGroupInput) and from_node.outputs.find(from_socket_name) < 0:
-        socket_type: Type[NodeSocket]
         if isinstance(to_node, NodeGroupOutput):
             # awful hack for an awful piece of data
             # a group with connections directly from its input to its output,
@@ -550,22 +551,18 @@ def process_connect(group: ShaderNodeTree, elem: ET.Element) -> None:
             to_socket = get_input(to_node, to_socket_name)
             socket_type = type(to_socket)
 
-        if socket_type is NodeSocketFloatFactor:
-            socket_type = NodeSocketFloat
-        group.interface.new_socket(name=from_socket_name, in_out='INPUT', socket_type=socket_type.__name__)
+        new_socket(group, 'INPUT', from_socket_name, socket_type)
 
     from_socket = get_output(from_node, from_socket_name)
 
     if isinstance(to_node, NodeGroupOutput) and to_node.inputs.find(to_socket_name) < 0:
         socket_type = type(from_socket)
-        if socket_type is NodeSocketFloatFactor:
-            socket_type = NodeSocketFloat
-        group.interface.new_socket(name=to_socket_name, in_out='OUTPUT', socket_type=socket_type.__name__)
+        new_socket(group, 'OUTPUT', to_socket_name, socket_type)
 
     to_socket = get_input(to_node, to_socket_name)
 
     if to_socket.is_linked and to_socket.type == 'SHADER' and from_socket.type == 'SHADER':
-        implicit_add = group.nodes.new('ShaderNodeAddShader')
+        implicit_add = new_node(group, ShaderNodeAddShader)
         previous_link = to_socket.links[0]
         previous_from_socket = previous_link.from_socket
         group.links.remove(previous_link)
@@ -574,7 +571,6 @@ def process_connect(group: ShaderNodeTree, elem: ET.Element) -> None:
         from_socket = implicit_add.outputs[0]
 
     group.links.new(from_socket, to_socket)
-    return
 
 # Eliminate redundant RGB ramp stops because the XML always has 255 equally-spaced stops,
 # but Blender has a limit of 32 and allows specifying position
