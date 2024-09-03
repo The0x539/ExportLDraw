@@ -461,37 +461,9 @@ def meta_pe_tex_info(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathu
         # aa = __reverse_rotation @ obj.matrix_world
         params = _params
 
-        # m03 = float(params[0])
-        # m13 = float(params[1])
-        # m23 = -float(params[2])
-        #
-        # m00 = float(params[3])
-        # m01 = float(params[4])
-        # m02 = -float(params[5])
-        #
-        # m10 = float(params[6])
-        # m11 = float(params[7])
-        # m12 = -float(params[8])
-        #
-        # m20 = -float(params[9])
-        # m21 = -float(params[10])
-        # m22 = float(params[11])
-        #
-        # m30 = 0.0
-        # m31 = 0.0
-        # m32 = 0.0
-        # m33 = 1
-        #
-        # _matrix = mathutils.Matrix((
-        #     (m00, m01, m02, m03),
-        #     (m10, m11, m12, m13),
-        #     (m20, m21, m22, m23),
-        #     (m30, m31, m32, m33)
-        # ))
-
         x = float(params[0])
         y = float(params[1])
-        z = -float(params[2])
+        z = float(params[2])
 
         a = float(params[3])
         b = float(params[4])
@@ -503,7 +475,7 @@ def meta_pe_tex_info(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathu
 
         g = -float(params[9])
         h = -float(params[10])
-        i = float(params[11])
+        i = -float(params[11])
 
         _matrix = mathutils.Matrix((
             (a, b, c, x),
@@ -596,7 +568,7 @@ def meta_face(
     winding: Winding | None,
 ) -> None:
     vertices = FaceData.handle_vertex_winding(child_node, matrix, winding)
-    pe_texmap = PETexmap.build_pe_texmap(ldraw_node, child_node)
+    pe_texmap = PETexmap.build_pe_texmap(ldraw_node, child_node, winding)
 
     geometry_data.add_face_data(
         vertices=vertices,
