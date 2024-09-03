@@ -716,7 +716,7 @@ class LDrawFile:
         return self.part_type in ldraw_part_types.part_types
 
     def is_like_part(self) -> bool:
-        return self.is_part() or self.is_shortcut_part() or self.has_geometry()
+        return self.is_part() or self.is_shortcut_part() or self.has_geometry() or self.has_tex_info()
 
     def is_subpart(self) -> bool:
         return self.part_type in ldraw_part_types.subpart_types
@@ -741,3 +741,6 @@ class LDrawFile:
 
     def has_geometry(self) -> bool:
         return sum(self.geometry_commands.values()) > 0
+
+    def has_tex_info(self) -> bool:
+        return any((node.meta_command or "").startswith("pe_tex_") for node in self.child_nodes)
