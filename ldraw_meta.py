@@ -463,7 +463,7 @@ def meta_pe_tex_info(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathu
 
         x = float(params[0])
         y = float(params[1])
-        z = float(params[2])
+        z = -float(params[2])
 
         a = float(params[3])
         b = float(params[4])
@@ -475,7 +475,7 @@ def meta_pe_tex_info(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathu
 
         g = -float(params[9])
         h = -float(params[10])
-        i = -float(params[11])
+        i = float(params[11])
 
         _matrix = mathutils.Matrix((
             (a, b, c, x),
@@ -483,6 +483,9 @@ def meta_pe_tex_info(ldraw_node: LDrawNode, child_node: LDrawNode, matrix: mathu
             (g, h, i, z),
             (0, 0, 0, 1)
         ))
+
+        flip_z = mathutils.Matrix.LocRotScale(None, None, (1, 1, -1))
+        _matrix = flip_z @ _matrix
 
         # this is the original transformation of the bounding box
         _inverse_matrix = _matrix.inverted()

@@ -107,8 +107,8 @@ class PETexmap:
             if winding == 'CW':
                 vertices.reverse()
 
-            if not intersect(vertices, p.box_extents):
-                return None
+            # if not intersect(vertices, p.box_extents):
+                # return None
 
             ab = vertices[1] - vertices[0]
             bc = vertices[2] - vertices[1]
