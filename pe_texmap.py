@@ -107,8 +107,8 @@ class PETexmap:
             if winding == 'CW':
                 vertices.reverse()
 
-            # if not intersect(vertices, p.box_extents):
-                # return None
+            if not intersect(vertices, p.box_extents):
+                return None
 
             ab = vertices[1] - vertices[0]
             bc = vertices[2] - vertices[1]
@@ -129,8 +129,15 @@ class PETexmap:
         else:
             return None
 
-def intersect(triangle: list[Vector], box_extents: Vector) -> bool:
-    a, b, c = triangle[:3]
+def intersect(polygon: list[Vector], box_extents: Vector) -> bool:
+    match polygon:
+        case [a, b, c]:
+            pass
+        case [a, b, c, d]:
+            return intersect([a, b, c], box_extents) or intersect([c, d, a], box_extents)
+        case _:
+            raise ValueError
+
     edges = [b - a, c - b, a - c]
     normal = edges[0].cross(edges[1])
     num: float
